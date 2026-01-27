@@ -8,7 +8,7 @@ from flask import Flask, render_template, request, jsonify, send_file, session, 
 from authlib.integrations.flask_client import OAuth
 
 app = Flask(__name__)
-app.secret_key = 'super_secret_key_change_this'
+app.secret_key = 'super_secret_key_change_this' # เปลี่ยนเป็นคีย์ลับของคุณเอง
 
 # ==========================================
 # ⚙️ ตั้งค่า Google OAuth
@@ -37,7 +37,7 @@ def init_db():
     cursor = conn.cursor()
     cursor.execute('CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, subject_id TEXT, created_at TEXT)')
     
-    # [แก้ไข 1] เพิ่มคอลัมน์ name, picture, status ให้ครบถ้วน
+    # สร้างตาราง attendance (มี name, picture, status ครบ)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS attendance (
             id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -135,16 +135,24 @@ def history_page():
     sessions = conn.execute('SELECT * FROM sessions ORDER BY id DESC').fetchall()
     conn.close()
     return render_template('history.html', sessions=sessions)
+
+# [✅ แก้ไขใหม่] เพิ่ม Route นี้เพื่อให้กดดูประวัติแล้วไม่เจอ 404
+@app.route('/history/<int:session_id>')
+def history_detail(session_id):
+    conn = get_db()
+    session_data = conn.execute('SELECT * FROM sessions WHERE id = ?', (session_id,)).fetchone()
+    students = conn.execute('SELECT * FROM attendance WHERE session_id = ?', (session_id,)).fetchall()
+    conn.close()
     
-# [แก้ไข 2] แก้ไข logic การ export ให้ถูกต้อง
+    if not session_data:
+        return "ไม่พบข้อมูลวิชานี้", 404
+        
+    return render_template('history_detail.html', session=session_data, students=students)
+
 @app.route('/export_history/<int:session_id>')
 def export_history(session_id):
     conn = get_db()
-    
-    # แก้ (session_info,) เป็น (session_id,)
     session_info = conn.execute('SELECT subject_id, created_at FROM sessions WHERE id = ?', (session_id,)).fetchone()
-    
-    # ดึงข้อมูล name และ status ออกมาด้วย
     students = conn.execute('''
         SELECT student_id, name, check_in_time, distance, status
         FROM attendance 
@@ -201,7 +209,6 @@ def check_in():
     status = "late" if elapsed_minutes > 15 else "present"
     time_str = datetime.datetime.now().strftime("%H:%M:%S")
     
-    # Memory Record
     student_record = {
         "id": student_id,
         "time": time_str,
@@ -213,23 +220,26 @@ def check_in():
     current_session['attendees'].append(student_record)
     current_session['current_qr_token'] = str(uuid.uuid4())[:8]
 
-    # [แก้ไข 3] บันทึก name, picture, status ลง Database ด้วย
     if current_session['db_id']:
         conn = get_db()
-        conn.execute('''
-            INSERT INTO attendance (session_id, student_id, check_in_time, distance, email, name, picture, status) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            current_session['db_id'], 
-            student_id, 
-            time_str, 
-            f"{dist:.0f}m", 
-            user.get('email', ''),
-            user.get('name', ''),
-            user.get('picture', ''),
-            status
-        ))
-        conn.commit()
+        # เช็คคอลัมน์ก่อน insert เพื่อความชัวร์ (เผื่อ DB เก่ายังไม่อัปเดต)
+        try:
+            conn.execute('''
+                INSERT INTO attendance (session_id, student_id, check_in_time, distance, email, name, picture, status) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                current_session['db_id'], 
+                student_id, 
+                time_str, 
+                f"{dist:.0f}m", 
+                user.get('email', ''),
+                user.get('name', ''),
+                user.get('picture', ''),
+                status
+            ))
+            conn.commit()
+        except Exception as e:
+            print(f"Database Error: {e}")
         conn.close()
 
     return jsonify({"status": "checked_in"})
@@ -291,7 +301,7 @@ def export_live_excel():
     df.to_excel(filename, index=False)
     return send_file(filename, as_attachment=True)
 
-# API สำหรับลบและแก้ไข (เพิ่มเติมเพื่อให้ history.html ทำงานได้ครบ)
+# API สำหรับลบและแก้ไข (เพื่อให้ history.html ทำงานได้)
 @app.route('/api/delete_session', methods=['POST'])
 def delete_session():
     data = request.json
@@ -312,5 +322,6 @@ def edit_session():
     return jsonify({"status": "success"})
 
 if __name__ == '__main__':
+    # บรรทัดนี้สำคัญสำหรับ Localhost/Ngrok
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
     app.run(host='0.0.0.0', port=5000)
