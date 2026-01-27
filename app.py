@@ -45,8 +45,17 @@ init_db()
 
 # Global Var (เหมือนเดิม)
 current_session = {
-    "is_active": False, "db_id": None, "subject_id": None, "teacher_lat": None, "teacher_long": None,
-    "radius": 50, "time_limit": 15, "start_time": None, "current_qr_token": None, "attendees": [] 
+    "is_active": False,
+    "db_id": None,
+    "subject_id": None,
+    "teacher_lat": None,
+    "teacher_long": None,
+    "radius": 50,
+    "time_limit": 15,
+    "start_time": None,
+    "current_qr_token": None,
+    "attendees": [],
+    "roster": [] # [เพิ่มใหม่] เก็บรายชื่อนักศึกษาทั้งหมดในห้อง
 }
 
 def haversine_distance(lat1, lon1, lat2, lon2):
@@ -97,13 +106,29 @@ def logout():
     return redirect('/')
 
 # --- Student Page (แก้ไขให้เช็ค Login) ---
+# ใน app.py ค้นหา route /student
 @app.route('/student')
 def student_page():
     user = session.get('user')
     if not user:
-        return redirect('/login') # ถ้ายังไม่ล็อกอิน ให้เด้งไปล็อกอิน
+        return redirect('/login') 
     
-    return render_template('student.html', user=user, student_id=session.get('student_id'))
+    student_id = session.get('student_id')
+
+    # [เพิ่มใหม่] ดึงประวัติการเข้าเรียนของนักศึกษาคนนี้
+    conn = get_db()
+    # Join ตาราง attendance กับ sessions เพื่อเอาชื่อวิชามาแสดง
+    history = conn.execute('''
+        SELECT attendance.*, sessions.subject_id, sessions.created_at as class_date
+        FROM attendance
+        JOIN sessions ON attendance.session_id = sessions.id
+        WHERE attendance.student_id = ?
+        ORDER BY sessions.created_at DESC
+    ''', (student_id,)).fetchall()
+    conn.close()
+    
+    # ส่งตัวแปร history ไปที่หน้าเว็บด้วย
+    return render_template('student.html', user=user, student_id=student_id, history=history)
 
 @app.route('/teacher')
 def teacher_page():
@@ -159,16 +184,20 @@ def check_in():
     if any(s['id'] == student_id for s in current_session['attendees']):
         return jsonify({"status": "error", "message": "คุณเช็คชื่อไปแล้ว"})
 
-    # บันทึก
+    # [เพิ่มใหม่] คำนวณสถานะ สาย/ปกติ
+    elapsed_minutes = (datetime.datetime.now() - current_session['start_time']).total_seconds() / 60
+    # สมมติว่าถ้ามาเกิน 15 นาทีถือว่าสาย (หรือจะตั้งแยกก็ได้)
+    status = "late" if elapsed_minutes > 15 else "present"
+
     time_str = datetime.datetime.now().strftime("%H:%M:%S")
     
-    # 1. ใส่ใน Memory (สำหรับโชว์หน้าจออาจารย์ Real-time)
     student_record = {
         "id": student_id,
         "time": time_str,
         "dist": f"{dist:.0f}m",
-        "name": user.get('name', 'ไม่ระบุชื่อ'),    # <--- เพิ่มบรรทัดนี้ (เก็บชื่อ)
-        "picture": user.get('picture', '')          # <--- เพิ่มบรรทัดนี้ (เก็บรูป)
+        "name": user.get('name', 'ไม่ระบุชื่อ'),
+        "picture": user.get('picture', ''),
+        "status": status # [บันทึก] สถานะ
     }
     current_session['attendees'].append(student_record)
     current_session['current_qr_token'] = str(uuid.uuid4())[:8]
@@ -184,26 +213,41 @@ def check_in():
 
     return jsonify({"status": "checked_in"})
 
-# API อื่นๆ (Start Class, Update QR) เหมือนเดิม...
-
+# [แก้ไข] API start_class ให้รับรายชื่อนักศึกษามาด้วย
 @app.route('/api/start_class', methods=['POST'])
 def start_class():
     data = request.json
+    
+    # ... (ส่วนบันทึก Database เหมือนเดิม) ...
     conn = get_db()
     cursor = conn.cursor()
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cursor.execute('INSERT INTO sessions (subject_id, created_at) VALUES (?, ?)', (data['subject_id'], now_str))
+    cursor.execute('INSERT INTO sessions (subject_id, created_at) VALUES (?, ?)', 
+                   (data['subject_id'], now_str))
     conn.commit()
     new_db_id = cursor.lastrowid
     conn.close()
+
+    # แยกรายชื่อที่ส่งมา (คั่นด้วยบรรทัดใหม่ หรือ ,)
+    raw_roster = data.get('roster', '')
+    # แปลงเป็น List และลบช่องว่าง
+    roster_list = [x.strip() for x in raw_roster.replace(',', '\n').split('\n') if x.strip()]
+
     current_session.update({
-        "is_active": True, "db_id": new_db_id, "subject_id": data['subject_id'],
-        "teacher_lat": float(data['lat']), "teacher_long": float(data['lng']),
-        "radius": int(data['radius']), "time_limit": int(data['time_limit']),
-        "start_time": datetime.datetime.now(), "attendees": [],
-        "current_qr_token": str(uuid.uuid4())[:8]
+        "is_active": True, 
+        "db_id": new_db_id, 
+        "subject_id": data['subject_id'],
+        "teacher_lat": float(data['lat']), 
+        "teacher_long": float(data['lng']),
+        "radius": int(data['radius']), 
+        "time_limit": int(data['time_limit']),
+        "start_time": datetime.datetime.now(), 
+        "attendees": [],
+        "current_qr_token": str(uuid.uuid4())[:8],
+        "roster": roster_list # [บันทึก] รายชื่อทั้งหมด
     })
-    return jsonify({"status": "success"})
+
+    return jsonify({"status": "success", "message": "Class Started"})
 
 @app.route('/api/update_qr_token', methods=['GET'])
 def update_qr_token():
@@ -216,7 +260,17 @@ def update_qr_token():
 
 @app.route('/api/get_dashboard_data', methods=['GET'])
 def get_dashboard_data():
-    return jsonify({"attendees": current_session['attendees']})
+    # หาคนมาแล้ว (เอาแค่ ID)
+    present_ids = [s['id'] for s in current_session['attendees']]
+    
+    # หาคนขาด (เอา ID ใน Roster ที่ไม่อยู่ใน present_ids)
+    absent_list = [uid for uid in current_session['roster'] if uid not in present_ids]
+
+    return jsonify({
+        "attendees": current_session['attendees'],
+        "absent_list": absent_list,
+        "total_students": len(current_session['roster'])
+    })
 
 if __name__ == '__main__':
     # บรรทัดนี้สำคัญสำหรับ Localhost เพื่อให้ OAuth ยอมทำงานบน HTTP
