@@ -147,14 +147,48 @@ def history_page():
     conn.close()
     return render_template('history.html', sessions=sessions)
     
-@app.route('/history/<int:session_id>')
-def history_detail(session_id):
-    conn = get_db()
-    session_data = conn.execute('SELECT * FROM sessions WHERE id = ?', (session_id,)).fetchone()
-    students = conn.execute('SELECT * FROM attendance WHERE session_id = ?', (session_id,)).fetchall()
-    conn.close()
-    return render_template('history_detail.html', session=session_data, students=students)
+# ในไฟล์ app.py ค้นหา @app.route('/export_history/<int:session_id>')
+# แล้วแก้ทับด้วยโค้ดชุดนี้ทั้งหมดครับ
 
+@app.route('/export_history/<int:session_id>')
+def export_history(session_id):
+    conn = get_db()
+    
+    # 1. ดึงข้อมูล Session มาเพื่อเอาชื่อวิชา
+    session_info = conn.execute('SELECT subject_id, created_at FROM sessions WHERE id = ?', (session_info,)).fetchone()
+    
+    # 2. ดึงข้อมูลการเข้าเรียน (เพิ่ม name และ status)
+    # หมายเหตุ: ต้องมั่นใจว่า Database ของคุณมีคอลัมน์ name แล้ว (จากขั้นตอน Google Login)
+    students = conn.execute('''
+        SELECT student_id, name, check_in_time, distance 
+        FROM attendance 
+        WHERE session_id = ?
+    ''', (session_id,)).fetchall()
+    conn.close()
+
+    if not students:
+        return "ไม่มีข้อมูลให้ Export"
+
+    # 3. แปลงเป็น DataFrame และตั้งชื่อคอลัมน์ภาษาไทย
+    # แปลง sqlite3.Row เป็น list of dicts ก่อนเพื่อให้ pandas เข้าใจง่าย
+    data_list = []
+    for row in students:
+        data_list.append({
+            "รหัสนักศึกษา": row['student_id'],
+            "ชื่อ-นามสกุล": row['name'] if 'name' in row.keys() and row['name'] else "ไม่ระบุ", # กัน Error
+            "เวลาที่เช็คชื่อ": row['check_in_time'],
+            "ระยะห่าง": row['distance']
+        })
+
+    df = pd.DataFrame(data_list)
+    
+    # 4. สร้างชื่อไฟล์และส่งออก
+    # ใช้ชื่อวิชา + เวลาที่ export เพื่อไม่ให้ไฟล์ซ้ำ
+    subject_name = session_info['subject_id'] if session_info else "Class"
+    filename = f"History_{subject_name}_{session_id}.xlsx"
+    
+    df.to_excel(filename, index=False)
+    return send_file(filename, as_attachment=True)
 # ================= API Check-in (แก้ใหม่) =================
 @app.route('/api/check_in', methods=['POST'])
 def check_in():
