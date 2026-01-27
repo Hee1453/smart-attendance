@@ -271,6 +271,40 @@ def get_dashboard_data():
         "absent_list": absent_list,
         "total_students": len(current_session['roster'])
     })
+# [เพิ่มใหม่] สำหรับ Export Excel จากหน้า Live (attendance_records)
+@app.route('/export_excel')
+def export_live_excel():
+    # เช็คว่ามีข้อมูลไหม
+    if not current_session['attendees']:
+        return "ไม่มีข้อมูลให้ Export (ยังไม่มีใครเช็คชื่อ)"
+    
+    # แปลงข้อมูลจาก Memory เป็น DataFrame
+    df = pd.DataFrame(current_session['attendees'])
+    
+    # เลือกคอลัมน์ที่จะ Export (id, name, time, dist, status)
+    # ต้องเช็คว่าคอลัมน์มีอยู่จริงไหม (กัน Error กรณีข้อมูลไม่ครบ)
+    columns_map = {
+        'id': 'รหัสนักศึกษา',
+        'name': 'ชื่อ-สกุล',
+        'time': 'เวลาที่มา',
+        'dist': 'ระยะห่าง',
+        'status': 'สถานะ'
+    }
+    
+    # กรองเฉพาะคอลัมน์ที่มีอยู่จริง
+    existing_cols = [c for c in columns_map.keys() if c in df.columns]
+    df = df[existing_cols]
+    
+    # เปลี่ยนชื่อหัวตารางเป็นภาษาไทย
+    df.rename(columns=columns_map, inplace=True)
+    
+    # ตั้งชื่อไฟล์ตามวิชาและเวลา
+    filename = f"Attendance_{current_session.get('subject_id', 'Live')}_{datetime.datetime.now().strftime('%H-%M')}.xlsx"
+    
+    # สร้างไฟล์ Excel
+    df.to_excel(filename, index=False)
+    
+    return send_file(filename, as_attachment=True)
 
 if __name__ == '__main__':
     # บรรทัดนี้สำคัญสำหรับ Localhost เพื่อให้ OAuth ยอมทำงานบน HTTP
