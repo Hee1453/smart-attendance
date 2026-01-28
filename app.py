@@ -1,5 +1,5 @@
 import uuid
-import datetime
+from datetime import datetime, timedelta # แก้แบบนี้
 import math
 import sqlite3
 import pandas as pd
@@ -26,6 +26,10 @@ google = oauth.register(
 )
 
 DB_NAME = "attendance_system.db"
+
+# ฟังก์ชันดึงเวลาประเทศไทย (UTC+7)
+def get_thai_now():
+    return datetime.utcnow() + timedelta(hours=7)
 
 def get_db():
     conn = sqlite3.connect(DB_NAME)
@@ -95,10 +99,10 @@ def authorize():
     try:
         # ตัดเอาแค่หน้า @
         temp_id = email.split('@')[0]
-        # [แก้ใหม่] ตัดให้เหลือแค่ 13 ตัวแรกเท่านั้น
-        student_id = temp_id[:13]
+        
+        student_id = temp_id[:12]
     except:
-        student_id = email[:13] # กันเหนียว
+        student_id = email[:12] # กันเหนียว
 
     session['student_id'] = student_id
     
@@ -213,9 +217,10 @@ def check_in():
     if any(s['id'] == student_id for s in current_session['attendees']):
         return jsonify({"status": "error", "message": "คุณเช็คชื่อไปแล้ว"})
 
-    elapsed_minutes = (datetime.datetime.now() - current_session['start_time']).total_seconds() / 60
+    now_thai = get_thai_now()
+    elapsed_minutes = (now_thai - current_session['start_time']).total_seconds() / 60
     status = "late" if elapsed_minutes > 15 else "present"
-    time_str = datetime.datetime.now().strftime("%H:%M:%S")
+    time_str = now_thai.strftime("%H:%M:%S")
     
     student_record = {
         "id": student_id,
@@ -257,8 +262,10 @@ def start_class():
     data = request.json
     conn = get_db()
     cursor = conn.cursor()
-    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cursor.execute('INSERT INTO sessions (subject_id, created_at) VALUES (?, ?)', (data['subject_id'], now_str))
+    now_thai = get_thai_now() 
+    now_str = now_thai.strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute('INSERT INTO sessions (subject_id, created_at) VALUES (?, ?)', 
+                   (data['subject_id'], now_str))
     conn.commit()
     new_db_id = cursor.lastrowid
     conn.close()
@@ -270,7 +277,7 @@ def start_class():
         "is_active": True, "db_id": new_db_id, "subject_id": data['subject_id'],
         "teacher_lat": float(data['lat']), "teacher_long": float(data['lng']),
         "radius": int(data['radius']), "time_limit": int(data['time_limit']),
-        "start_time": datetime.datetime.now(), "attendees": [],
+        "start_time": now_thai,
         "current_qr_token": str(uuid.uuid4())[:8], "roster": roster_list
     })
     return jsonify({"status": "success", "message": "Class Started"})
@@ -278,7 +285,7 @@ def start_class():
 @app.route('/api/update_qr_token', methods=['GET'])
 def update_qr_token():
     if not current_session['is_active']: return jsonify({"status": "expired"})
-    elapsed = (datetime.datetime.now() - current_session['start_time']).total_seconds() / 60
+    elapsed = (get_thai_now() - current_session['start_time']).total_seconds() / 60
     if elapsed > current_session['time_limit']:
         current_session['is_active'] = False
         return jsonify({"status": "expired"})
@@ -305,7 +312,7 @@ def export_live_excel():
     df = df[existing_cols]
     df.rename(columns=columns_map, inplace=True)
     
-    filename = f"Attendance_{current_session.get('subject_id', 'Live')}_{datetime.datetime.now().strftime('%H-%M')}.xlsx"
+    filename = f"Attendance_{current_session.get('subject_id', 'Live')}_{get_thai_now().strftime('%H-%M')}.xlsx"
     df.to_excel(filename, index=False)
     return send_file(filename, as_attachment=True)
 
