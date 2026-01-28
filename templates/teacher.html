@@ -121,24 +121,15 @@
                                 <label class="form-label fw-bold">ชื่อวิชา / กิจกรรม</label>
                                 <input type="text" class="form-control form-control-lg" id="subject_id" placeholder="เช่น INT101" required>
                             </div>
-                            <div class="row g-3">
+                            <div class="row g-3 mb-4">
                                 <div class="col-6">
                                     <label class="form-label">รัศมี (เมตร)</label>
                                     <input type="number" class="form-control" id="radius" value="50">
                                 </div>
-                                <div class="col-6 mb-3">
+                                <div class="col-6">
                                     <label class="form-label">เวลา (นาที)</label>
                                     <input type="number" class="form-control" id="time_limit" value="15">
                                 </div>
-                            </div>
-
-                            <div class="mb-4">
-                                <label class="form-label fw-bold text-success">
-                                    <i class="fas fa-file-excel me-1"></i> รายชื่อนักศึกษาทั้งหมด (เพื่อเช็คคนขาด)
-                                </label>
-                                <textarea class="form-control bg-light" id="roster_input" rows="4" 
-                                    placeholder="วางรหัสนักศึกษาที่นี่ (เช่น copy จาก Excel มาวาง)&#10;66001&#10;66002&#10;66003"></textarea>
-                                <div class="form-text text-muted">หากไม่ใส่ ระบบจะแสดงเฉพาะคนที่มาเรียนเท่านั้น</div>
                             </div>
 
                             <button class="btn btn-primary w-100 btn-lg shadow-sm" id="btn-start">
@@ -181,13 +172,8 @@
                             <div class="card-header bg-white p-0">
                                 <ul class="nav nav-tabs card-header-tabs m-0" id="attendanceTabs" role="tablist">
                                     <li class="nav-item">
-                                        <button class="nav-link active py-3 px-4 rounded-0 border-0 border-end" id="present-tab" data-bs-toggle="tab" data-bs-target="#present-view" type="button">
-                                            <i class="fas fa-check-circle text-success me-2"></i>มาเรียน (<span id="count-present">0</span>)
-                                        </button>
-                                    </li>
-                                    <li class="nav-item">
-                                        <button class="nav-link py-3 px-4 rounded-0 border-0" id="absent-tab" data-bs-toggle="tab" data-bs-target="#absent-view" type="button">
-                                            <i class="fas fa-user-times text-danger me-2"></i>ขาดเรียน (<span id="count-absent">0</span>)
+                                        <button class="nav-link active py-3 px-4 rounded-0 border-0" id="present-tab" data-bs-toggle="tab" data-bs-target="#present-view" type="button">
+                                            <i class="fas fa-check-circle text-success me-2"></i>รายชื่อผู้เข้าเรียน (<span id="count-present">0</span>)
                                         </button>
                                     </li>
                                 </ul>
@@ -211,17 +197,6 @@
                                             </table>
                                         </div>
                                     </div>
-
-                                    <div class="tab-pane fade" id="absent-view">
-                                        <div class="p-3">
-                                            <div class="alert alert-danger shadow-sm">
-                                                <i class="fas fa-exclamation-triangle me-2"></i> รายชื่อนักศึกษาที่ยังไม่สแกน
-                                            </div>
-                                            <ul class="list-group list-group-flush" id="list-absent">
-                                                </ul>
-                                        </div>
-                                    </div>
-
                                 </div>
                             </div>
                             <div class="card-footer bg-white text-center py-3">
@@ -265,7 +240,7 @@
                 radius: document.getElementById("radius").value,
                 time_limit: document.getElementById("time_limit").value,
                 lat: pos.coords.latitude, lng: pos.coords.longitude,
-                roster: document.getElementById("roster_input").value // [NEW] Send roster
+                roster: "" // ส่งค่าว่างไปแทน เพื่อไม่ให้ Error
             };
 
             fetch('/api/start_class', {
@@ -329,19 +304,16 @@
         .then(data => {
 
             const attendees = data.attendees || [];
-            const absentList = data.absent_list || [];
-            const totalStudents = data.total_students || 0;
-
+            
+            // แสดงจำนวนคนมา
             document.getElementById("count-present").innerText = attendees.length;
-            document.getElementById("count-absent").innerText = absentList.length;
 
-            // 1. Render Present List
+            // Render Present List
             const listPresent = document.getElementById("list-present");
             listPresent.innerHTML = "";
             
             [...attendees].reverse().forEach(s => {
                 const nameShow = s.name || "ไม่ระบุชื่อ"; 
-                // เช็คสถานะ (ถ้ายังไม่ได้แก้ backend อาจจะเป็น undefined ให้ default เป็น present)
                 let statusBadge = '<span class="badge bg-success rounded-pill">มาเรียน</span>';
                 if(s.status === 'late') {
                     statusBadge = '<span class="badge badge-late rounded-pill">สาย</span>';
@@ -360,32 +332,6 @@
                         <td class="align-middle">${statusBadge} <small class="text-secondary ms-1">(${s.dist})</small></td>
                     </tr>`;
             });
-
-            // 2. Render Absent List
-            const listAbsent = document.getElementById("list-absent");
-            listAbsent.innerHTML = "";
-            
-            if (absentList.length === 0 && totalStudents > 0) {
-                 listAbsent.innerHTML = `
-                    <div class="text-center py-5 text-success">
-                        <i class="fas fa-check-circle fa-3x mb-3"></i>
-                        <h5>สุดยอด! มาเรียนครบทุกคน</h5>
-                    </div>`;
-            } else if (totalStudents === 0 && attendees.length > 0) {
-                 listAbsent.innerHTML = `
-                    <div class="text-center py-5 text-muted">
-                        <i class="fas fa-info-circle fa-2x mb-3"></i>
-                        <p>ไม่ได้ระบุรายชื่อนักศึกษา (Roster) ตอนเริ่มคลาส</p>
-                    </div>`;
-            } else {
-                absentList.forEach(id => {
-                    listAbsent.innerHTML += 
-                        `<li class="list-group-item d-flex justify-content-between align-items-center py-3">
-                            <span class="fw-bold text-secondary" style="font-size: 1.1rem;">${id}</span>
-                            <span class="badge bg-danger bg-opacity-10 text-danger border border-danger rounded-pill px-3">ขาดเรียน</span>
-                        </li>`;
-                });
-            }
         });
     }
     </script>
