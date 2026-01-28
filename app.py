@@ -87,15 +87,23 @@ def login():
 def authorize():
     token = google.authorize_access_token()
     user_info = token.get('userinfo')
+    
+    # เก็บข้อมูลพื้นฐานลง Session ก่อน
     session['user'] = user_info
     
     email = user_info['email']
     try:
-        student_id = email.split('@')[0] 
+        # ตัดเอาแค่หน้า @
+        temp_id = email.split('@')[0]
+        # [แก้ใหม่] ตัดให้เหลือแค่ 13 ตัวแรกเท่านั้น
+        student_id = temp_id[:13]
     except:
-        student_id = email
+        student_id = email[:13] # กันเหนียว
+
     session['student_id'] = student_id
-    return redirect('/student')
+    
+    # [แก้ใหม่] แทนที่จะไป /student เลย ให้ไปหน้าตั้งชื่อก่อน
+    return redirect('/setup_profile')
 
 @app.route('/logout')
 def logout():
@@ -320,6 +328,32 @@ def edit_session():
     conn.commit()
     conn.close()
     return jsonify({"status": "success"})
+
+# [เพิ่มใหม่] หน้าสำหรับกรอกชื่อ-นามสกุล
+@app.route('/setup_profile')
+def setup_profile_page():
+    user = session.get('user')
+    if not user: return redirect('/login')
+    
+    return render_template('setup_profile.html', 
+                         user=user, 
+                         student_id=session.get('student_id'))
+
+# [เพิ่มใหม่] บันทึกชื่อลง Session แล้วค่อยเข้าหน้าหลัก
+@app.route('/save_profile', methods=['POST'])
+def save_profile():
+    if 'user' not in session: return redirect('/login')
+    
+    fname = request.form.get('fname')
+    lname = request.form.get('lname')
+    full_name = f"{fname} {lname}" # รวมชื่อนามสกุล
+    
+    # อัปเดตชื่อใน Session ใหม่ (ทับชื่อจาก Google ไปเลย)
+    user_info = session['user']
+    user_info['name'] = full_name
+    session['user'] = user_info # บันทึกกลับลง Session
+    
+    return redirect('/student')
 
 if __name__ == '__main__':
     # บรรทัดนี้สำคัญสำหรับ Localhost/Ngrok
