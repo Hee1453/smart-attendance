@@ -154,6 +154,11 @@
                                 <div class="p-2 border rounded d-inline-block bg-white">
                                     <div id="qrcode"></div>
                                 </div>
+                                <div class="mt-2">
+                                    <button class="btn btn-outline-dark btn-sm w-100" data-bs-toggle="modal" data-bs-target="#qrModal">
+                                        <i class="fas fa-expand me-1"></i> ขยายเต็มจอ
+                                    </button>
+                                </div>
                                 <h4 class="text-danger mt-3 fw-bold" id="timer-display">เหลือเวลา --</h4>
                             </div>
                         </div>
@@ -279,25 +284,47 @@
         .then(data => {
             if (data.status === 'expired') {
                 clearInterval(qrTimer); clearInterval(dataTimer);
-                document.getElementById("qrcode").innerHTML = "<h4 class='text-danger fw-bold'>หมดเวลา</h4>";
+                const expireMsg = "<h4 class='text-danger fw-bold'>หมดเวลา</h4>";
+                document.getElementById("qrcode").innerHTML = expireMsg;
+                document.getElementById("qrcode-large").innerHTML = expireMsg; // อัปเดตตัวใหญ่ด้วย
                 document.getElementById("timer-display").innerHTML = "หมดเวลา";
+                document.getElementById("timer-display-modal").innerHTML = "หมดเวลา";
                 return;
             }
+
+            // เช็คว่า Token เปลี่ยนไหม ถ้าเปลี่ยนให้วาดใหม่
             const box = document.getElementById("qrcode");
+            const boxLarge = document.getElementById("qrcode-large"); // กล่องใหญ่
+
             if (box.getAttribute("data-token") !== data.qr_token) {
+                // 1. วาดตัวเล็ก
                 box.innerHTML = "";
                 new QRCode(box, {
                     text: data.qr_token, width: 200, height: 200,
                     colorDark : "#000000", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H
                 });
+                
+                // 2. [เพิ่มใหม่] วาดตัวใหญ่ (Full Screen)
+                boxLarge.innerHTML = "";
+                new QRCode(boxLarge, {
+                    text: data.qr_token, width: 400, height: 400, // ขนาดใหญ่สะใจ
+                    colorDark : "#000000", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H
+                });
+
+                // อัปเดต attribute กันกระพริบ
                 box.setAttribute("data-token", data.qr_token);
+                
+                // Effect กระพริบขอบเขียว
                 box.style.border = "5px solid #198754";
                 setTimeout(() => box.style.border = "5px solid white", 300);
             }
-            document.getElementById("timer-display").innerText = `เหลือเวลา: ${Math.max(0, data.time_left).toFixed(0)} นาที`;
+            
+            // อัปเดตเวลาทั้ง 2 จุด
+            const timeText = `เหลือเวลา: ${Math.max(0, data.time_left).toFixed(0)} นาที`;
+            document.getElementById("timer-display").innerText = timeText;
+            document.getElementById("timer-display-modal").innerText = timeText;
         });
     }
-
     function fetchDashboard() {
         fetch('/api/get_dashboard_data')
         .then(res => res.json())
@@ -335,5 +362,20 @@
         });
     }
     </script>
+                <div class="modal fade" id="qrModal" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered modal-lg"> <div class="modal-content">
+                        <div class="modal-header bg-dark text-white">
+                            <h5 class="modal-title"><i class="fas fa-qrcode me-2"></i>QR Code สำหรับเช็คชื่อ</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body text-center bg-white d-flex justify-content-center align-items-center" style="min-height: 400px;">
+                            <div id="qrcode-large" style="transform: scale(1.5);"></div> 
+                        </div>
+                        <div class="modal-footer justify-content-center">
+                            <h3 class="text-danger fw-bold" id="timer-display-modal">เหลือเวลา --</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
 </body>
 </html>
