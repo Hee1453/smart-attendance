@@ -362,6 +362,75 @@ def save_profile():
     
     return redirect('/student')
 
+    # ==========================================
+# 👮‍♂️ ADMIN ROUTES (ส่วนของผู้ดูแลระบบ)
+# ==========================================
+
+# กำหนดรหัสผ่าน Admin (เปลี่ยนได้ตามใจชอบ)
+ADMIN_PASSWORD = "admin_password_1234"
+
+@app.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    if request.method == 'POST':
+        password = request.form.get('password')
+        if password == ADMIN_PASSWORD:
+            session['is_admin'] = True
+            return redirect('/admin')
+        else:
+            return render_template('admin_login.html', error="รหัสผ่านไม่ถูกต้อง")
+    return render_template('admin_login.html')
+
+@app.route('/admin/logout')
+def admin_logout():
+    session.pop('is_admin', None)
+    return redirect('/admin/login')
+
+@app.route('/admin')
+def admin_dashboard():
+    if not session.get('is_admin'):
+        return redirect('/admin/login')
+    
+    conn = get_db()
+    
+    # 1. สถิติรวม
+    stats = {
+        'total_sessions': conn.execute('SELECT COUNT(*) FROM sessions').fetchone()[0],
+        'total_checkins': conn.execute('SELECT COUNT(*) FROM attendance').fetchone()[0],
+        'unique_students': conn.execute('SELECT COUNT(DISTINCT student_id) FROM attendance').fetchone()[0]
+    }
+    
+    # 2. ดึงข้อมูล Sessions ทั้งหมด
+    sessions = conn.execute('SELECT * FROM sessions ORDER BY created_at DESC').fetchall()
+    
+    # 3. ดึงรายชื่อนักศึกษา (Unique)
+    students = conn.execute('''
+        SELECT DISTINCT student_id, name, email, MAX(check_in_time) as last_seen 
+        FROM attendance 
+        GROUP BY student_id 
+        ORDER BY last_seen DESC
+    ''').fetchall()
+    
+    conn.close()
+    
+    return render_template('admin.html', stats=stats, sessions=sessions, students=students)
+
+@app.route('/api/admin/reset_database', methods=['POST'])
+def admin_reset_db():
+    if not session.get('is_admin'):
+        return jsonify({"status": "error", "message": "Unauthorized"}), 403
+        
+    try:
+        conn = get_db()
+        conn.execute('DELETE FROM attendance')
+        conn.execute('DELETE FROM sessions')
+        # Reset Auto Increment
+        conn.execute('DELETE FROM sqlite_sequence') 
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "success", "message": "ล้างข้อมูลเรียบร้อยแล้ว"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+    
 if __name__ == '__main__':
     # บรรทัดนี้สำคัญสำหรับ Localhost/Ngrok
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
