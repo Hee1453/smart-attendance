@@ -306,13 +306,32 @@ def export_live_excel():
     if not current_session['attendees']:
         return "ไม่มีข้อมูลให้ Export (ยังไม่มีใครเช็คชื่อ)"
     
+    # 1. สร้าง DataFrame
     df = pd.DataFrame(current_session['attendees'])
-    columns_map = {'id': 'รหัสนักศึกษา', 'name': 'ชื่อ-สกุล', 'time': 'เวลาที่มา', 'dist': 'ระยะห่าง', 'status': 'สถานะ'}
+    
+    # [เพิ่มใหม่] ใส่ชื่อวิชาลงไปเป็นคอลัมน์แรกเลย
+    subject_name = current_session.get('subject_id', 'Unknown')
+    df.insert(0, 'subject_id', subject_name)
+
+    # 2. Map ชื่อคอลัมน์เป็นภาษาไทย
+    columns_map = {
+        'subject_id': 'วิชา',  # [เพิ่มใหม่]
+        'id': 'รหัสนักศึกษา',
+        'name': 'ชื่อ-สกุล',
+        'time': 'เวลาที่มา',
+        'dist': 'ระยะห่าง',
+        'status': 'สถานะ'
+    }
+    
+    # กรองและเปลี่ยนชื่อคอลัมน์
     existing_cols = [c for c in columns_map.keys() if c in df.columns]
     df = df[existing_cols]
     df.rename(columns=columns_map, inplace=True)
     
-    filename = f"Attendance_{current_session.get('subject_id', 'Live')}_{get_thai_now().strftime('%H-%M')}.xlsx"
+    # 3. ตั้งชื่อไฟล์ (รวมชื่อวิชา + วันที่ + เวลา)
+    safe_subject = "".join([c for c in subject_name if c.isalnum() or c in (' ','-','_')]).strip()
+    filename = f"Attendance_{safe_subject}_{get_thai_now().strftime('%Y-%m-%d_%H-%M')}.xlsx"
+    
     df.to_excel(filename, index=False)
     return send_file(filename, as_attachment=True)
 
