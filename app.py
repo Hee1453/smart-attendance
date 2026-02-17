@@ -373,7 +373,7 @@ ADMIN_PASSWORD = "admin_password_1234"
 def admin_login():
     if request.method == 'POST':
         password = request.form.get('password')
-        if password == ADMIN_PASSWORD:
+        if password == 123456789: # เปลี่ยนรหัสผ่านตามที่คุณต้องการ
             session['is_admin'] = True
             return redirect('/admin')
         else:
