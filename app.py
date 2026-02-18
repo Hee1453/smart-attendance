@@ -461,3 +461,18 @@ def admin_reset_db():
 if __name__ == '__main__':
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
     app.run(host='0.0.0.0', port=5000)
+
+
+import os
+
+@app.route('/force_reset_db')
+def force_reset():
+    try:
+        # สั่งลบไฟล์ Database ทิ้ง
+        if os.path.exists(DB_NAME):
+            os.remove(DB_NAME)
+        # สั่งสร้างใหม่
+        init_db()
+        return "รีเซ็ตฐานข้อมูลเรียบร้อย! (Database Reset Success)"
+    except Exception as e:
+        return f"เกิดข้อผิดพลาด: {str(e)}"
