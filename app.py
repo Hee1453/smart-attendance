@@ -318,27 +318,42 @@ def check_in():
     dist = haversine_distance(current_session['teacher_lat'], current_session['teacher_long'], float(data['lat']), float(data['lng']))
     if dist > current_session['radius']: return jsonify({"status": "error", "message": f"อยู่นอกพื้นที่ ({dist:.0f} เมตร)"})
 
+    # เช็คว่าตัวเองเคยเช็คไปหรือยัง
     if any(s['id'] == student_id for s in current_session['attendees']): return jsonify({"status": "error", "message": "คุณเช็คชื่อไปแล้ว"})
 
-    # [NEW] เก็บ IP และ User Agent
-    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr) # รองรับ Render Cloud
+    # ======================================================
+    # 🕵️‍♂️ [เพิ่มใหม่] ระบบป้องกันการใช้อุปกรณ์เดิมเช็คชื่อให้เพื่อน
+    # ======================================================
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     user_agent = request.headers.get('User-Agent')
+
+    for s in current_session['attendees']:
+        # ถ้า IP ตรงกัน และ Browser/เครื่องรุ่นเดียวกันเป๊ะ (User-Agent)
+        if s.get('ip') == client_ip and s.get('ua') == user_agent:
+             return jsonify({
+                 "status": "error", 
+                 "message": "⛔ ไม่สามารถเช็คชื่อได้: ตรวจพบการใช้อุปกรณ์ซ้ำกับรหัส " + s['id']
+             })
+    # ======================================================
 
     now_thai = get_thai_now()
     elapsed_minutes = (now_thai - current_session['start_time']).total_seconds() / 60
     status = "late" if elapsed_minutes > 15 else "present"
     time_str = now_thai.strftime("%H:%M:%S")
     
+    # เพิ่ม ip และ ua ลงใน Memory เพื่อใช้ตรวจคนต่อไป
     student_record = {
         "id": student_id, "time": time_str, "dist": f"{dist:.0f}m",
-        "name": user.get('name', 'ไม่ระบุชื่อ'), "picture": user.get('picture', ''), "status": status
+        "name": user.get('name', 'ไม่ระบุชื่อ'), "picture": user.get('picture', ''), 
+        "status": status,
+        "ip": client_ip,      # [เพิ่ม]
+        "ua": user_agent      # [เพิ่ม]
     }
     current_session['attendees'].append(student_record)
     current_session['current_qr_token'] = str(uuid.uuid4())[:8]
 
     if current_session['db_id']:
         conn = get_db()
-        # [NEW] Insert IP and Device Info
         conn.execute('''
             INSERT INTO attendance (session_id, student_id, check_in_time, distance, email, name, picture, status, ip_address, device_info) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
