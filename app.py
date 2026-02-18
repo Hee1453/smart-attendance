@@ -97,9 +97,9 @@ def authorize():
     email = user_info['email']
     try:
         temp_id = email.split('@')[0]
-        student_id = temp_id[:13]
+        student_id = temp_id[:12]
     except:
-        student_id = email[:13]
+        student_id = email[:12]
     session['student_id'] = student_id
     return redirect('/setup_profile')
 
@@ -356,7 +356,7 @@ def check_in():
 # ==========================================
 # 📊 [UPDATE] Admin Analytics (ส่วนวิเคราะห์ผล)
 # ==========================================
-ADMIN_PASSWORD = "admin_password_1234"
+ADMIN_PASSWORD = "1234"
 
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
