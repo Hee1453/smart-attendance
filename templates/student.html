@@ -74,6 +74,34 @@
         </div>
     </div>
 
+    <div class="row g-3 mb-4 mt-2">
+        <div class="col-6">
+            <div class="card border-0 shadow-sm h-100 {{ 'bg-danger text-white' if stats.percent < 80 else 'bg-success text-white' }}">
+                <div class="card-body text-center p-3">
+                    <i class="fas fa-chart-pie fa-2x mb-2 opacity-75"></i>
+                    <h6 class="mb-1 opacity-75">เข้าเรียนแล้ว</h6>
+                    <h2 class="fw-bold mb-0">{{ stats.percent }}%</h2>
+                    <small class="badge bg-white bg-opacity-25 mt-2 rounded-pill px-2">
+                        {{ '⚠️ เสี่ยงหมดสิทธิ์' if stats.percent < 80 else '✅ สถานะปกติ' }}
+                    </small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-6">
+            <div class="card border-0 shadow-sm h-100 bg-white text-dark">
+                <div class="card-body text-center p-3">
+                    <i class="fas fa-clipboard-check fa-2x mb-2 text-primary"></i>
+                    <h6 class="mb-1 text-muted">จำนวนคาบ</h6>
+                    <h2 class="fw-bold text-primary mb-0">
+                        {{ stats.attended }}<span class="fs-6 text-muted">/{{ stats.total }}</span>
+                    </h2>
+                    <small class="text-muted mt-2 d-block">ครั้งที่มาเรียน</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="mt-5">
     <h5 class="fw-bold mb-3"><i class="fas fa-history text-primary"></i> ประวัติการเข้าเรียนของคุณ</h5>
     
