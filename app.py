@@ -324,17 +324,34 @@ def check_in():
     # ======================================================
     # 🕵️‍♂️ [เพิ่มใหม่] ระบบป้องกันการใช้อุปกรณ์เดิมเช็คชื่อให้เพื่อน
     # ======================================================
-    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    # ======================================================
+    # 🕵️‍♂️ [แก้ไข] ระบบดึง IP ให้แม่นยำขึ้น (ตัดส่วนเกินออก)
+    # ======================================================
+    # ดึง IP จาก Header (เผื่อผ่าน Proxy/Cloud)
+    if request.headers.getlist("X-Forwarded-For"):
+        client_ip = request.headers.getlist("X-Forwarded-For")[0].split(',')[0].strip()
+    else:
+        client_ip = request.remote_addr
+
     user_agent = request.headers.get('User-Agent')
 
+    # [เพิ่ม] สั่งปริ้นดูใน Log ของ Render เลยว่าใครใช้ IP อะไร
+    print(f"DEBUG Check-in: ID={student_id}, IP={client_ip}, UA={user_agent}")
+
     for s in current_session['attendees']:
-        # ถ้า IP ตรงกัน และ Browser/เครื่องรุ่นเดียวกันเป๊ะ (User-Agent)
-        if s.get('ip') == client_ip and s.get('ua') == user_agent:
+        # เปรียบเทียบข้อมูล
+        saved_ip = s.get('ip')
+        saved_ua = s.get('ua')
+        
+        # ปริ้นเทียบกันให้เห็นชัดๆ
+        print(f"   -> Compare with {s['id']}: IP={saved_ip}, UA={saved_ua}")
+
+        if saved_ip == client_ip and saved_ua == user_agent:
+             print("   !!! DUPLICATE DETECTED !!!")
              return jsonify({
                  "status": "error", 
                  "message": "⛔ ไม่สามารถเช็คชื่อได้: ตรวจพบการใช้อุปกรณ์ซ้ำกับรหัส " + s['id']
              })
-    # ======================================================
 
     now_thai = get_thai_now()
     elapsed_minutes = (now_thai - current_session['start_time']).total_seconds() / 60
