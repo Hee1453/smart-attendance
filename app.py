@@ -46,8 +46,16 @@ def get_db():
 def init_db():
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('CREATE TABLE IF NOT EXISTS sessions (id SERIAL PRIMARY KEY, subject_id TEXT, created_at TEXT)')
     
+    # 1. ตาราง Sessions (เพิ่ม teacher_email เพื่อแยกคลาสของอาจารย์แต่ละคน)
+    cursor.execute('CREATE TABLE IF NOT EXISTS sessions (id SERIAL PRIMARY KEY, subject_id TEXT, created_at TEXT, teacher_email TEXT)')
+    
+    # [อัปเดตตารางเก่าอัตโนมัติเผื่อยังไม่มีคอลัมน์นี้]
+    cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='sessions' AND column_name='teacher_email'")
+    if not cursor.fetchone():
+        cursor.execute("ALTER TABLE sessions ADD COLUMN teacher_email TEXT DEFAULT 'unknown'")
+    
+    # 2. ตาราง Attendance
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS attendance (
             id SERIAL PRIMARY KEY, 
@@ -65,7 +73,7 @@ def init_db():
         )
     ''')
     
-    # [เพิ่มใหม่] ตารางสำหรับเก็บรายชื่ออีเมลอาจารย์
+    # 3. ตาราง Teachers
     cursor.execute('CREATE TABLE IF NOT EXISTS teachers (id SERIAL PRIMARY KEY, email TEXT UNIQUE)')
     
     cursor.close()
@@ -73,11 +81,19 @@ def init_db():
 
 init_db()
 
-current_session = {
-    "is_active": False, "db_id": None, "subject_id": None, "teacher_lat": None, "teacher_long": None,
-    "radius": 50, "time_limit": 15, "start_time": None, "current_qr_token": None, 
-    "attendees": [], "roster": []
-}
+# ==========================================
+# 🧠 ระบบ Memory แยกตามอีเมลอาจารย์ (Multi-Teacher)
+# ==========================================
+active_sessions = {}
+
+def get_teacher_session(email):
+    if email not in active_sessions:
+        active_sessions[email] = {
+            "is_active": False, "db_id": None, "subject_id": None, "teacher_lat": None, "teacher_long": None,
+            "radius": 50, "time_limit": 15, "start_time": None, "current_qr_token": None, 
+            "attendees": [], "roster": []
+        }
+    return active_sessions[email]
 
 def haversine_distance(lat1, lon1, lat2, lon2):
     R = 6371 
@@ -103,7 +119,6 @@ def authorize():
     session['user'] = user_info
     email = user_info['email']
     
-    # 🔍 เช็คในฐานข้อมูลว่าอีเมลนี้เป็นอาจารย์หรือไม่
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('SELECT email FROM teachers WHERE email = %s', (email,))
@@ -111,12 +126,10 @@ def authorize():
     cursor.close()
     conn.close()
     
-    # ถ้าเป็นอาจารย์ที่ลงทะเบียนไว้ หรือ เป็น Super Admin
     if is_teacher or email == SUPER_ADMIN_EMAIL:
         session['role'] = 'teacher'
         return redirect('/teacher') 
         
-    # 🎓 ถ้าไม่ใช่ ให้ถือว่าเป็นนักศึกษา
     session['role'] = 'student'
     try:
         temp_id = email.split('@')[0]
@@ -179,10 +192,7 @@ def student_page():
 @app.route('/teacher')
 def teacher_page():
     user = session.get('user')
-    
-    # 1. บังคับให้ล็อกอินก่อน
-    if not user: 
-        return redirect('/login')
+    if not user: return redirect('/login')
         
     email = user.get('email')
     conn = get_db()
@@ -192,7 +202,6 @@ def teacher_page():
     cursor.close()
     conn.close()
         
-    # 2. ป้องกันไม่ให้นักศึกษาแอบเข้าหน้าอาจารย์
     if not is_teacher and email != SUPER_ADMIN_EMAIL:
         return "⛔ ไม่อนุญาตให้เข้าถึง: หน้านี้สงวนไว้สำหรับอาจารย์ผู้สอนเท่านั้น", 403
         
@@ -200,17 +209,26 @@ def teacher_page():
 
 @app.route('/attendance_records')
 def attendance_records():
-    sorted_attendees = sorted(current_session['attendees'], key=lambda x: (x['id'][-3:], x['id']))
-    return render_template('attendance_records.html', attendees=sorted_attendees, subject=current_session.get('subject_id'), current_session=current_session)
+    user = session.get('user')
+    if not user: return redirect('/login')
+    
+    curr_sess = get_teacher_session(user['email'])
+    sorted_attendees = sorted(curr_sess['attendees'], key=lambda x: (x['id'][-3:], x['id']))
+    return render_template('attendance_records.html', attendees=sorted_attendees, subject=curr_sess.get('subject_id'), current_session=curr_sess)
 
 @app.route('/history')
 def history_page():
+    user = session.get('user')
+    if not user: return redirect('/login')
+    
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM sessions ORDER BY id DESC')
+    # ดึงประวัติเฉพาะของอาจารย์ที่ล็อกอินอยู่เท่านั้น
+    cursor.execute('SELECT * FROM sessions WHERE teacher_email = %s ORDER BY id DESC', (user['email'],))
     sessions = cursor.fetchall()
     cursor.close()
     conn.close()
+    
     return render_template('history.html', sessions=sessions)
 
 @app.route('/history/<int:session_id>')
@@ -319,12 +337,16 @@ def edit_session():
 
 @app.route('/export_excel')
 def export_live_excel():
-    if not current_session['attendees']: return "ไม่มีข้อมูลให้ Export"
+    user = session.get('user')
+    if not user: return "กรุณาล็อกอิน"
+    curr_sess = get_teacher_session(user['email'])
     
-    sorted_attendees = sorted(current_session['attendees'], key=lambda x: (x['id'][-3:], x['id']))
+    if not curr_sess['attendees']: return "ไม่มีข้อมูลให้ Export"
+    
+    sorted_attendees = sorted(curr_sess['attendees'], key=lambda x: (x['id'][-3:], x['id']))
     df = pd.DataFrame(sorted_attendees)
     
-    subject_name = current_session.get('subject_id', 'Unknown')
+    subject_name = curr_sess.get('subject_id', 'Unknown')
     df.insert(0, 'subject_id', subject_name)
     
     columns_map = {'subject_id': 'วิชา', 'id': 'รหัสนักศึกษา', 'name': 'ชื่อ-สกุล', 'time': 'เวลาที่มา', 'dist': 'ระยะห่าง', 'status': 'สถานะ'}
@@ -350,13 +372,18 @@ def export_live_excel():
 
 @app.route('/api/start_class', methods=['POST'])
 def start_class():
+    user = session.get('user')
+    if not user: return jsonify({"status": "error", "message": "กรุณาล็อกอิน"})
+    
     data = request.json
     conn = get_db()
     cursor = conn.cursor()
     now_thai = get_thai_now() 
     now_str = now_thai.strftime("%Y-%m-%d %H:%M:%S")
+    teacher_email = user['email']
     
-    cursor.execute('INSERT INTO sessions (subject_id, created_at) VALUES (%s, %s) RETURNING id', (data['subject_id'], now_str))
+    # บันทึกอีเมลอาจารย์ลงในฐานข้อมูลด้วย
+    cursor.execute('INSERT INTO sessions (subject_id, created_at, teacher_email) VALUES (%s, %s, %s) RETURNING id', (data['subject_id'], now_str, teacher_email))
     new_db_id = cursor.fetchone()[0]
     
     cursor.close()
@@ -365,7 +392,8 @@ def start_class():
     raw_roster = data.get('roster', '')
     roster_list = [x.strip() for x in raw_roster.replace(',', '\n').split('\n') if x.strip()]
     
-    current_session.update({
+    curr_sess = get_teacher_session(teacher_email)
+    curr_sess.update({
         "is_active": True, 
         "db_id": new_db_id, 
         "subject_id": data['subject_id'],
@@ -382,23 +410,33 @@ def start_class():
 
 @app.route('/api/update_qr_token', methods=['GET'])
 def update_qr_token():
-    if not current_session['is_active']: return jsonify({"status": "expired"})
-    elapsed = (get_thai_now() - current_session['start_time']).total_seconds() / 60
-    if elapsed > current_session['time_limit']:
-        current_session['is_active'] = False
+    user = session.get('user')
+    if not user: return jsonify({"status": "expired"})
+    
+    curr_sess = get_teacher_session(user['email'])
+    if not curr_sess['is_active']: return jsonify({"status": "expired"})
+    
+    elapsed = (get_thai_now() - curr_sess['start_time']).total_seconds() / 60
+    if elapsed > curr_sess['time_limit']:
+        curr_sess['is_active'] = False
         return jsonify({"status": "expired"})
-    return jsonify({"qr_token": current_session['current_qr_token'], "time_left": current_session['time_limit'] - elapsed})
+        
+    return jsonify({"qr_token": curr_sess['current_qr_token'], "time_left": curr_sess['time_limit'] - elapsed})
 
 @app.route('/api/get_dashboard_data', methods=['GET'])
 def get_dashboard_data():
-    sorted_attendees = sorted(current_session['attendees'], key=lambda x: (x['id'][-3:], x['id']))
+    user = session.get('user')
+    if not user: return jsonify({"status": "error"})
+    
+    curr_sess = get_teacher_session(user['email'])
+    sorted_attendees = sorted(curr_sess['attendees'], key=lambda x: (x['id'][-3:], x['id']))
     
     present_ids = [s['id'] for s in sorted_attendees]
-    absent_list = [uid for uid in current_session['roster'] if uid not in present_ids]
+    absent_list = [uid for uid in curr_sess['roster'] if uid not in present_ids]
     return jsonify({
         "attendees": sorted_attendees,
         "absent_list": absent_list,
-        "total_students": len(current_session['roster'])
+        "total_students": len(curr_sess['roster'])
     })
 
 @app.route('/api/check_in', methods=['POST'])
@@ -408,13 +446,22 @@ def check_in():
     
     if not user or not student_id: return jsonify({"status": "error", "message": "กรุณาล็อกอินใหม่"})
     data = request.json
-    if not current_session['is_active']: return jsonify({"status": "error", "message": "คลาสเรียนปิดแล้ว"})
-    if data.get('qr_token') != current_session['current_qr_token']: return jsonify({"status": "error", "message": "QR Code ไม่ถูกต้อง/หมดอายุ"})
+    token = data.get('qr_token')
+    
+    # ระบบค้นหาห้องเรียนอัตโนมัติจาก QR Token ที่ส่งมา
+    target_session = None
+    for s in active_sessions.values():
+        if s['is_active'] and s['current_qr_token'] == token:
+            target_session = s
+            break
+            
+    if not target_session: 
+        return jsonify({"status": "error", "message": "QR Code ไม่ถูกต้อง/หมดอายุ หรือคลาสถูกปิดไปแล้ว"})
 
-    dist = haversine_distance(current_session['teacher_lat'], current_session['teacher_long'], float(data['lat']), float(data['lng']))
-    if dist > current_session['radius']: return jsonify({"status": "error", "message": f"อยู่นอกพื้นที่ ({dist:.0f} เมตร)"})
+    dist = haversine_distance(target_session['teacher_lat'], target_session['teacher_long'], float(data['lat']), float(data['lng']))
+    if dist > target_session['radius']: return jsonify({"status": "error", "message": f"อยู่นอกพื้นที่ ({dist:.0f} เมตร)"})
 
-    if any(s['id'] == student_id for s in current_session['attendees']): return jsonify({"status": "error", "message": "คุณเช็คชื่อไปแล้ว"})
+    if any(s['id'] == student_id for s in target_session['attendees']): return jsonify({"status": "error", "message": "คุณเช็คชื่อไปแล้ว"})
 
     if request.headers.getlist("X-Forwarded-For"):
         client_ip = request.headers.getlist("X-Forwarded-For")[0].split(',')[0].strip()
@@ -423,7 +470,7 @@ def check_in():
 
     user_agent = request.headers.get('User-Agent')
 
-    for s in current_session['attendees']:
+    for s in target_session['attendees']:
         saved_ip = s.get('ip')
         saved_ua = s.get('ua')
         if saved_ip == client_ip and saved_ua == user_agent:
@@ -433,7 +480,7 @@ def check_in():
              })
 
     now_thai = get_thai_now()
-    elapsed_minutes = (now_thai - current_session['start_time']).total_seconds() / 60
+    elapsed_minutes = (now_thai - target_session['start_time']).total_seconds() / 60
     status = "late" if elapsed_minutes > 15 else "present"
     time_str = now_thai.strftime("%H:%M:%S")
     
@@ -444,17 +491,19 @@ def check_in():
         "ip": client_ip,      
         "ua": user_agent      
     }
-    current_session['attendees'].append(student_record)
-    current_session['current_qr_token'] = str(uuid.uuid4())[:8]
+    target_session['attendees'].append(student_record)
+    
+    # อัปเดต QR Code ทันทีป้องกันการถ่ายรูปส่งให้เพื่อน
+    target_session['current_qr_token'] = str(uuid.uuid4())[:8]
 
-    if current_session['db_id']:
+    if target_session['db_id']:
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO attendance (session_id, student_id, check_in_time, distance, email, name, picture, status, ip_address, device_info) 
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ''', (
-            current_session['db_id'], student_id, time_str, f"{dist:.0f}m", 
+            target_session['db_id'], student_id, time_str, f"{dist:.0f}m", 
             user.get('email', ''), user.get('name', ''), user.get('picture', ''), status,
             client_ip, user_agent
         ))
@@ -463,6 +512,9 @@ def check_in():
 
     return jsonify({"status": "checked_in"})
 
+# ==========================================
+# ส่วนของ ADMIN (แอดมินดูภาพรวมทั้งหมดได้)
+# ==========================================
 ADMIN_PASSWORD = "1234"
 
 @app.route('/admin/login', methods=['GET', 'POST'])
@@ -542,7 +594,6 @@ def admin_dashboard():
     ''')
     cheating_logs = cursor.fetchall()
     
-    # [เพิ่มใหม่] ดึงรายชื่ออาจารย์ไปแสดงที่หน้าแอดมิน
     cursor.execute('SELECT * FROM teachers ORDER BY id DESC')
     teachers_list = cursor.fetchall()
 
@@ -574,9 +625,6 @@ def admin_reset_db():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
-# ==========================================
-# 🆕 API สำหรับจัดการรายชื่ออาจารย์
-# ==========================================
 @app.route('/api/admin/add_teacher', methods=['POST'])
 def add_teacher():
     if not session.get('is_admin'): return jsonify({"status": "error"}), 403
@@ -604,19 +652,24 @@ def delete_teacher():
     conn.close()
     return jsonify({"status": "success"})
 
-# ==========================================
-# API สำหรับเปิด/ปิดและเช็คชื่อ
-# ==========================================
 @app.route('/api/stop_class', methods=['POST'])
 def stop_class():
-    if current_session['is_active']:
-        current_session['is_active'] = False
+    user = session.get('user')
+    if not user: return jsonify({"status": "error", "message": "กรุณาล็อกอิน"})
+    
+    curr_sess = get_teacher_session(user['email'])
+    if curr_sess['is_active']:
+        curr_sess['is_active'] = False
         return jsonify({"status": "success", "message": "ปิดคลาสเรียบร้อย"})
     return jsonify({"status": "error", "message": "ไม่มีคลาสที่เปิดอยู่"})
 
 @app.route('/api/manual_checkin', methods=['POST'])
 def manual_checkin():
-    if not current_session['is_active']:
+    user = session.get('user')
+    if not user: return jsonify({"status": "error", "message": "กรุณาล็อกอิน"})
+    
+    curr_sess = get_teacher_session(user['email'])
+    if not curr_sess['is_active']:
         return jsonify({"status": "error", "message": "ไม่มีคลาสที่กำลังเปิดอยู่ กรุณาเปิดคลาสก่อน"})
         
     data = request.json
@@ -626,7 +679,7 @@ def manual_checkin():
     dist_str = data.get('dist', 'Manual')
     req_status = data.get('status', 'present')
     
-    if any(s['id'] == student_id for s in current_session['attendees']):
+    if any(s['id'] == student_id for s in curr_sess['attendees']):
         return jsonify({"status": "error", "message": "นักศึกษาคนนี้มีชื่อในระบบแล้ว"})
         
     conn = get_db()
@@ -648,14 +701,14 @@ def manual_checkin():
         "name": final_name, "picture": picture, "status": req_status,
         "ip": "Manual", "ua": "Manual"
     }
-    current_session['attendees'].append(student_record)
+    curr_sess['attendees'].append(student_record)
     
-    if current_session['db_id']:
+    if curr_sess['db_id']:
         cursor.execute('''
             INSERT INTO attendance (session_id, student_id, check_in_time, distance, email, name, picture, status, ip_address, device_info) 
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ''', (
-            current_session['db_id'], student_id, time_str, dist_str, 
+            curr_sess['db_id'], student_id, time_str, dist_str, 
             '', final_name, picture, req_status, 'Manual', 'Manual'
         ))
         conn.commit()
