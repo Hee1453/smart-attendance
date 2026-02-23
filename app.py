@@ -506,13 +506,11 @@ def admin_reset_db():
     student_id = data.get('id')
     time_str = data.get('time')
     dist_str = data.get('dist', 'Manual')
-    req_status = data.get('status', 'present') # รับค่าสถานะ (present, late, leave)
+    req_status = data.get('status', 'present')
     
-    # ตรวจสอบว่าเช็คชื่อไปแล้วหรือยัง
     if any(s['id'] == student_id for s in current_session['attendees']):
         return jsonify({"status": "error", "message": "นักศึกษาคนนี้มีชื่อในระบบแล้ว"})
         
-    # ค้นหาชื่อและรูปจากประวัติเก่า (ถ้ามี)
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('SELECT name, picture FROM attendance WHERE student_id = %s LIMIT 1', (student_id,))
@@ -521,7 +519,6 @@ def admin_reset_db():
     name = student_info['name'] if student_info and student_info['name'] else 'เพิ่มโดยอาจารย์'
     picture = student_info['picture'] if student_info and student_info['picture'] else ''
     
-    # เพิ่มลงใน Memory
     student_record = {
         "id": student_id, "time": time_str, "dist": dist_str,
         "name": name, "picture": picture, "status": req_status,
@@ -529,7 +526,6 @@ def admin_reset_db():
     }
     current_session['attendees'].append(student_record)
     
-    # เพิ่มลงใน Database
     if current_session['db_id']:
         cursor.execute('''
             INSERT INTO attendance (session_id, student_id, check_in_time, distance, email, name, picture, status, ip_address, device_info) 
