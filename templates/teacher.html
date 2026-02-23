@@ -162,6 +162,9 @@
                                     <button class="btn btn-outline-dark btn-sm w-100" data-bs-toggle="modal" data-bs-target="#qrModal">
                                         <i class="fas fa-expand me-1"></i> ขยายเต็มจอ
                                     </button>
+                                    <button onclick="stopClass()" class="btn btn-danger btn-sm w-100 mt-2 shadow-sm">
+                                        <i class="fas fa-stop-circle me-1"></i> ปิดคลาสทันที
+                                    </button>
                                 </div>
                                 <h4 class="text-danger mt-3 fw-bold" id="timer-display">เหลือเวลา --</h4>
                             </div>
@@ -330,41 +333,40 @@
         });
     }
     function fetchDashboard() {
-        fetch('/api/get_dashboard_data')
-        .then(res => res.json())
-        .then(data => {
+            fetch('/api/get_dashboard_data')
+            .then(res => res.json())
+            .then(data => {
+                const attendees = data.attendees || [];
+                document.getElementById("count-present").innerText = attendees.length;
+                const listPresent = document.getElementById("list-present");
+                listPresent.innerHTML = "";
+                
+                [...attendees].reverse().forEach(s => {
+                    const nameShow = s.name || "ไม่ระบุชื่อ"; 
+                    
+                    // 👇 [แก้ไข] ดักจับสถานะให้ครบ ทั้ง มาเรียน, สาย, และ ลา
+                    let statusBadge = '<span class="badge bg-success rounded-pill">มาเรียน</span>';
+                    if(s.status === 'late') {
+                        statusBadge = '<span class="badge badge-late rounded-pill" style="background-color: #ffc107; color: #000;">สาย</span>';
+                    } else if(s.status === 'leave') {
+                        statusBadge = '<span class="badge bg-info text-dark rounded-pill">ลาป่วย/ลากิจ</span>';
+                    }
 
-            const attendees = data.attendees || [];
-            
-            // แสดงจำนวนคนมา
-            document.getElementById("count-present").innerText = attendees.length;
-
-            // Render Present List
-            const listPresent = document.getElementById("list-present");
-            listPresent.innerHTML = "";
-            
-            [...attendees].reverse().forEach(s => {
-                const nameShow = s.name || "ไม่ระบุชื่อ"; 
-                let statusBadge = '<span class="badge bg-success rounded-pill">มาเรียน</span>';
-                if(s.status === 'late') {
-                    statusBadge = '<span class="badge badge-late rounded-pill">สาย</span>';
-                }
-
-                listPresent.innerHTML +=
-                    `<tr>
-                        <td class="align-middle"><small class="text-muted">${s.time}</small></td>
-                        <td class="align-middle fw-bold text-primary">${s.id}</td>
-                        <td class="align-middle">
-                            <div class="d-flex align-items-center">
-                                ${s.picture ? `<img src="${s.picture}" class="rounded-circle me-2 border" width="30" height="30">` : ''}
-                                <span>${nameShow}</span>
-                            </div>
-                        </td>
-                        <td class="align-middle">${statusBadge} <small class="text-secondary ms-1">(${s.dist})</small></td>
-                    </tr>`;
+                    listPresent.innerHTML +=
+                        `<tr>
+                            <td class="align-middle"><small class="text-muted">${s.time}</small></td>
+                            <td class="align-middle fw-bold text-primary">${s.id}</td>
+                            <td class="align-middle">
+                                <div class="d-flex align-items-center">
+                                    ${s.picture ? `<img src="${s.picture}" class="rounded-circle me-2 border" width="30" height="30">` : ''}
+                                    <span>${nameShow}</span>
+                                </div>
+                            </td>
+                            <td class="align-middle">${statusBadge} <small class="text-secondary ms-1">(${s.dist})</small></td>
+                        </tr>`;
+                });
             });
-        });
-    }
+        }
 
     // ... โค้ดประกาศตัวแปร let map, teacherMarker, radiusCircle, qrTimer, dataTimer; ...
 
@@ -392,6 +394,20 @@
                 } else {
                     // ถ้าคลาสหมดเวลาหรือปิดไปแล้ว ก็โชว์หน้า Setup ตามปกติ
                     alert('เซสชันการเช็คชื่อได้สิ้นสุดลงแล้ว');
+                }
+            });
+        }
+    }
+
+// [เพิ่มใหม่] ฟังก์ชันกดหยุดคลาส
+    function stopClass() {
+        if(confirm('คุณต้องการปิดระบบเช็คชื่อสำหรับคลาสนี้ทันทีเลยใช่หรือไม่?')) {
+            fetch('/api/stop_class', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    // เรียกอัปเดต QR Code เพื่อให้ระบบเคลียร์หน้าจอเป็น "หมดเวลา"
+                    updateQR(); 
                 }
             });
         }
