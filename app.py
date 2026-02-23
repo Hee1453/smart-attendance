@@ -223,19 +223,37 @@ def export_history(session_id):
     conn.close()
     
     if not students: return "ไม่มีข้อมูลให้ Export"
+    
+    # [แก้ไขที่ 1] สร้างตัวแปรสำหรับแปลภาษา
+    status_map = {'present': 'มาเรียน', 'late': 'มาสาย', 'leave': 'ลาป่วย/ลากิจ'}
+    
     data_list = []
     for row in students:
+        raw_status = row['status'] if 'status' in row.keys() else 'present'
         data_list.append({
             "รหัสนักศึกษา": row['student_id'],
             "ชื่อ-นามสกุล": row['name'] if 'name' in row.keys() and row['name'] else "ไม่ระบุ",
             "เวลาที่เช็คชื่อ": row['check_in_time'],
             "ระยะห่าง": row['distance'],
-            "สถานะ": row['status'] if 'status' in row.keys() else 'present'
+            "สถานะ": status_map.get(raw_status, raw_status) # แปลงค่าเป็นภาษาไทย
         })
+        
     df = pd.DataFrame(data_list)
     subject_name = session_info['subject_id'] if session_info else "Class"
     filename = f"History_{subject_name}_{session_id}.xlsx"
-    df.to_excel(filename, index=False)
+    
+    # [แก้ไขที่ 2] จัดรูปแบบความกว้างของช่องให้พอดีกับข้อความ
+    from openpyxl.utils import get_column_letter
+    with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Sheet1')
+        worksheet = writer.sheets['Sheet1']
+        
+        for idx, col in enumerate(df.columns):
+            # หาความยาวตัวอักษรที่ยาวที่สุดในแต่ละคอลัมน์ แล้วเผื่อพื้นที่ไว้ 5 ช่อง
+            max_len = max(df[col].astype(str).map(len).max(), len(str(col))) + 5
+            col_letter = get_column_letter(idx + 1)
+            worksheet.column_dimensions[col_letter].width = max_len
+            
     return send_file(filename, as_attachment=True)
 
 @app.route('/api/delete_session', methods=['POST'])
@@ -265,12 +283,29 @@ def export_live_excel():
     df = pd.DataFrame(current_session['attendees'])
     subject_name = current_session.get('subject_id', 'Unknown')
     df.insert(0, 'subject_id', subject_name)
+    
     columns_map = {'subject_id': 'วิชา', 'id': 'รหัสนักศึกษา', 'name': 'ชื่อ-สกุล', 'time': 'เวลาที่มา', 'dist': 'ระยะห่าง', 'status': 'สถานะ'}
     existing_cols = [c for c in columns_map.keys() if c in df.columns]
     df = df[existing_cols]
     df.rename(columns=columns_map, inplace=True)
+    
+    # [แก้ไขที่ 1] แปลงคอลัมน์ "สถานะ" เป็นภาษาไทย
+    status_map = {'present': 'มาเรียน', 'late': 'มาสาย', 'leave': 'ลาป่วย/ลากิจ'}
+    df['สถานะ'] = df['สถานะ'].map(lambda x: status_map.get(x, x))
+    
     filename = f"Attendance_{subject_name}_{get_thai_now().strftime('%Y-%m-%d_%H-%M')}.xlsx"
-    df.to_excel(filename, index=False)
+    
+    # [แก้ไขที่ 2] จัดรูปแบบความกว้างของช่องให้พอดีกับข้อความ
+    from openpyxl.utils import get_column_letter
+    with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Sheet1')
+        worksheet = writer.sheets['Sheet1']
+        
+        for idx, col in enumerate(df.columns):
+            max_len = max(df[col].astype(str).map(len).max(), len(str(col))) + 5
+            col_letter = get_column_letter(idx + 1)
+            worksheet.column_dimensions[col_letter].width = max_len
+            
     return send_file(filename, as_attachment=True)
 
 @app.route('/api/start_class', methods=['POST'])
