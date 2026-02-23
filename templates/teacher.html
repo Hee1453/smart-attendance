@@ -365,6 +365,39 @@
             });
         });
     }
+
+    // ... โค้ดประกาศตัวแปร let map, teacherMarker, radiusCircle, qrTimer, dataTimer; ...
+
+    // [เพิ่มส่วนนี้เข้าไป] ตรวจสอบสถานะเมื่อโหลดหน้าเว็บ
+    window.onload = function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const view = urlParams.get('view');
+
+        // ถ้ากดปุ่ม "กลับห้องเรียนปัจจุบัน" มา
+        if (view === 'dashboard') {
+            // ลองเช็คกับ Server ดูก่อนว่าคลาสยัง active อยู่ไหม
+            fetch('/api/update_qr_token')
+            .then(res => res.json())
+            .then(data => {
+                if (data.status !== 'expired' && data.qr_token) {
+                    // ถ้าคลาสยังเปิดอยู่ ให้สลับไปหน้า Dashboard ทันที
+                    document.getElementById("setup-panel").style.display = "none";
+                    document.getElementById("dashboard-panel").style.display = "block";
+                    
+                    // เริ่มรัน Timer และดึงข้อมูลใหม่
+                    updateQR();
+                    qrTimer = setInterval(updateQR, 1000);
+                    fetchDashboard();
+                    dataTimer = setInterval(fetchDashboard, 2000);
+                } else {
+                    // ถ้าคลาสหมดเวลาหรือปิดไปแล้ว ก็โชว์หน้า Setup ตามปกติ
+                    alert('เซสชันการเช็คชื่อได้สิ้นสุดลงแล้ว');
+                }
+            });
+        }
+    }
+
+// ... โค้ด function showPanel(panelName) { ...
     </script>
                 <div class="modal fade" id="qrModal" tabindex="-1">
                 <div class="modal-dialog modal-dialog-centered modal-lg"> <div class="modal-content">
