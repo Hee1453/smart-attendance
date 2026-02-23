@@ -116,7 +116,6 @@ def student_page():
     conn = get_db()
     cursor = conn.cursor()
     
-    # ดึงประวัติทั้งหมดของนักศึกษา
     cursor.execute('''
         SELECT attendance.*, sessions.subject_id, sessions.created_at as class_date
         FROM attendance
@@ -128,16 +127,12 @@ def student_page():
     cursor.close()
     conn.close()
 
-    # ---------------------------------------------------------
-    # 📊 จัดกลุ่มประวัติตามรายวิชา และคำนวณเปอร์เซ็นต์ (ฐาน 18 คาบ)
-    # ---------------------------------------------------------
     TOTAL_CLASSES_PER_SUBJECT = 18
     subjects_data = {}
 
     for row in raw_history:
         subj = row['subject_id']
         if subj not in subjects_data:
-            # ถ้ายังไม่มีวิชานี้ใน Dict ให้สร้างโครงสร้างขึ้นมา
             subjects_data[subj] = {
                 "subject_id": subj,
                 "attended": 0,
@@ -146,17 +141,13 @@ def student_page():
                 "history": []
             }
         
-        # เพิ่มประวัติการเข้าเรียนลงไปในวิชานั้นๆ
         subjects_data[subj]["history"].append(row)
-        # บวกจำนวนครั้งที่มาเรียนเพิ่มขึ้น 1
         subjects_data[subj]["attended"] += 1
 
-    # คำนวณเปอร์เซ็นต์ของแต่ละวิชา
     for subj in subjects_data:
         percent = (subjects_data[subj]["attended"] / TOTAL_CLASSES_PER_SUBJECT) * 100
         subjects_data[subj]["percent"] = int(percent)
 
-    # ส่ง subjects_data ไปให้หน้าเว็บแทน (ไม่ต้องส่ง stats แบบเดิมแล้ว)
     return render_template('student.html', user=user, student_id=student_id, subjects_data=subjects_data)
 
 @app.route('/teacher')
@@ -165,7 +156,9 @@ def teacher_page():
 
 @app.route('/attendance_records')
 def attendance_records():
-    return render_template('attendance_records.html', attendees=current_session['attendees'], subject=current_session.get('subject_id'), current_session=current_session)
+    # เรียงลำดับ 3 ตัวท้าย -> ตามด้วยรหัสเต็ม
+    sorted_attendees = sorted(current_session['attendees'], key=lambda x: (x['id'][-3:], x['id']))
+    return render_template('attendance_records.html', attendees=sorted_attendees, subject=current_session.get('subject_id'), current_session=current_session)
 
 @app.route('/history')
 def history_page():
@@ -184,7 +177,7 @@ def history_detail(session_id):
     cursor.execute('SELECT * FROM sessions WHERE id = %s', (session_id,))
     session_data = cursor.fetchone()
     
-    # [แก้ไข] ใช้ ORDER BY RIGHT() เพื่อเรียง 3 ตัวท้าย และตามด้วยรหัสเต็ม
+    # เรียงลำดับ 3 ตัวท้าย -> ตามด้วยรหัสเต็ม
     cursor.execute('''
         SELECT * FROM attendance 
         WHERE session_id = %s 
@@ -205,7 +198,6 @@ def export_history(session_id):
     cursor.execute('SELECT subject_id, created_at FROM sessions WHERE id = %s', (session_id,))
     session_info = cursor.fetchone()
     
-    # [แก้ไข] ใช้ ORDER BY RIGHT() เช่นเดียวกัน
     cursor.execute('''
         SELECT student_id, name, check_in_time, distance, status 
         FROM attendance 
@@ -262,52 +254,6 @@ def save_profile():
     session['user'] = user_info
     return redirect('/student')
 
-@app.route('/export_history/<int:session_id>')
-def export_history(session_id):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT subject_id, created_at FROM sessions WHERE id = %s', (session_id,))
-    session_info = cursor.fetchone()
-    
-    cursor.execute('SELECT student_id, name, check_in_time, distance, status FROM attendance WHERE session_id = %s', (session_id,))
-    students = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    
-    if not students: return "ไม่มีข้อมูลให้ Export"
-    
-    # [แก้ไขที่ 1] สร้างตัวแปรสำหรับแปลภาษา
-    status_map = {'present': 'มาเรียน', 'late': 'มาสาย', 'leave': 'ลาป่วย/ลากิจ'}
-    
-    data_list = []
-    for row in students:
-        raw_status = row['status'] if 'status' in row.keys() else 'present'
-        data_list.append({
-            "รหัสนักศึกษา": row['student_id'],
-            "ชื่อ-นามสกุล": row['name'] if 'name' in row.keys() and row['name'] else "ไม่ระบุ",
-            "เวลาที่เช็คชื่อ": row['check_in_time'],
-            "ระยะห่าง": row['distance'],
-            "สถานะ": status_map.get(raw_status, raw_status) # แปลงค่าเป็นภาษาไทย
-        })
-        
-    df = pd.DataFrame(data_list)
-    subject_name = session_info['subject_id'] if session_info else "Class"
-    filename = f"History_{subject_name}_{session_id}.xlsx"
-    
-    # [แก้ไขที่ 2] จัดรูปแบบความกว้างของช่องให้พอดีกับข้อความ
-    from openpyxl.utils import get_column_letter
-    with pd.ExcelWriter(filename, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Sheet1')
-        worksheet = writer.sheets['Sheet1']
-        
-        for idx, col in enumerate(df.columns):
-            # หาความยาวตัวอักษรที่ยาวที่สุดในแต่ละคอลัมน์ แล้วเผื่อพื้นที่ไว้ 5 ช่อง
-            max_len = max(df[col].astype(str).map(len).max(), len(str(col))) + 5
-            col_letter = get_column_letter(idx + 1)
-            worksheet.column_dimensions[col_letter].width = max_len
-            
-    return send_file(filename, as_attachment=True)
-
 @app.route('/api/delete_session', methods=['POST'])
 def delete_session():
     data = request.json
@@ -332,101 +278,7 @@ def edit_session():
 @app.route('/export_excel')
 def export_live_excel():
     if not current_session['attendees']: return "ไม่มีข้อมูลให้ Export"
-    df = pd.DataFrame(current_session['attendees'])
-    subject_name = current_session.get('subject_id', 'Unknown')
-    df.insert(0, 'subject_id', subject_name)
     
-    columns_map = {'subject_id': 'วิชา', 'id': 'รหัสนักศึกษา', 'name': 'ชื่อ-สกุล', 'time': 'เวลาที่มา', 'dist': 'ระยะห่าง', 'status': 'สถานะ'}
-    existing_cols = [c for c in columns_map.keys() if c in df.columns]
-    df = df[existing_cols]
-    df.rename(columns=columns_map, inplace=True)
-    
-    # [แก้ไขที่ 1] แปลงคอลัมน์ "สถานะ" เป็นภาษาไทย
-    status_map = {'present': 'มาเรียน', 'late': 'มาสาย', 'leave': 'ลาป่วย/ลากิจ'}
-    df['สถานะ'] = df['สถานะ'].map(lambda x: status_map.get(x, x))
-    
-    filename = f"Attendance_{subject_name}_{get_thai_now().strftime('%Y-%m-%d_%H-%M')}.xlsx"
-    
-    # [แก้ไขที่ 2] จัดรูปแบบความกว้างของช่องให้พอดีกับข้อความ
-    from openpyxl.utils import get_column_letter
-    with pd.ExcelWriter(filename, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Sheet1')
-        worksheet = writer.sheets['Sheet1']
-        
-        for idx, col in enumerate(df.columns):
-            max_len = max(df[col].astype(str).map(len).max(), len(str(col))) + 5
-            col_letter = get_column_letter(idx + 1)
-            worksheet.column_dimensions[col_letter].width = max_len
-            
-    return send_file(filename, as_attachment=True)
-
-@app.route('/api/start_class', methods=['POST'])
-def start_class():
-    data = request.json
-    conn = get_db()
-    cursor = conn.cursor()
-    now_thai = get_thai_now() 
-    now_str = now_thai.strftime("%Y-%m-%d %H:%M:%S")
-    
-    # ดึง ID ล่าสุด
-    cursor.execute('INSERT INTO sessions (subject_id, created_at) VALUES (%s, %s) RETURNING id', (data['subject_id'], now_str))
-    new_db_id = cursor.fetchone()[0]
-    
-    cursor.close()
-    conn.close()
-    
-    raw_roster = data.get('roster', '')
-    roster_list = [x.strip() for x in raw_roster.replace(',', '\n').split('\n') if x.strip()]
-    
-    # 👇 [แก้ไขตรงนี้] เพิ่ม "attendees": [] เพื่อล้างรายชื่อเก่าทิ้งทุกครั้งที่เปิดคลาสใหม่
-    current_session.update({
-        "is_active": True, 
-        "db_id": new_db_id, 
-        "subject_id": data['subject_id'],
-        "teacher_lat": float(data['lat']), 
-        "teacher_long": float(data['lng']),
-        "radius": int(data['radius']), 
-        "time_limit": int(data['time_limit']),
-        "start_time": now_thai,
-        "current_qr_token": str(uuid.uuid4())[:8], 
-        "roster": roster_list,
-        "attendees": []   # <==== เพิ่มบรรทัดนี้เข้าไปครับ
-    })
-    return jsonify({"status": "success", "message": "Class Started"})
-
-@app.route('/api/update_qr_token', methods=['GET'])
-def update_qr_token():
-    if not current_session['is_active']: return jsonify({"status": "expired"})
-    elapsed = (get_thai_now() - current_session['start_time']).total_seconds() / 60
-    if elapsed > current_session['time_limit']:
-        current_session['is_active'] = False
-        return jsonify({"status": "expired"})
-    return jsonify({"qr_token": current_session['current_qr_token'], "time_left": current_session['time_limit'] - elapsed})
-
-@app.route('/api/get_dashboard_data', methods=['GET'])
-def get_dashboard_data():
-    # [แก้ไข] เรียงลำดับ: 3 ตัวท้าย -> ตามด้วยรหัสเต็ม
-    sorted_attendees = sorted(current_session['attendees'], key=lambda x: (x['id'][-3:], x['id']))
-    
-    present_ids = [s['id'] for s in sorted_attendees]
-    absent_list = [uid for uid in current_session['roster'] if uid not in present_ids]
-    return jsonify({
-        "attendees": sorted_attendees, # ส่งข้อมูลที่เรียงแล้วไปให้หน้าเว็บ
-        "absent_list": absent_list,
-        "total_students": len(current_session['roster'])
-    })
-
-@app.route('/attendance_records')
-def attendance_records():
-    # [แก้ไข] เรียงลำดับก่อนส่งไปหน้าบันทึกการเข้าเรียน
-    sorted_attendees = sorted(current_session['attendees'], key=lambda x: (x['id'][-3:], x['id']))
-    return render_template('attendance_records.html', attendees=sorted_attendees, subject=current_session.get('subject_id'), current_session=current_session)
-
-@app.route('/export_excel')
-def export_live_excel():
-    if not current_session['attendees']: return "ไม่มีข้อมูลให้ Export"
-    
-    # [แก้ไข] เรียงลำดับก่อนนำไปลง Excel
     sorted_attendees = sorted(current_session['attendees'], key=lambda x: (x['id'][-3:], x['id']))
     df = pd.DataFrame(sorted_attendees)
     
@@ -454,6 +306,59 @@ def export_live_excel():
             
     return send_file(filename, as_attachment=True)
 
+@app.route('/api/start_class', methods=['POST'])
+def start_class():
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    now_thai = get_thai_now() 
+    now_str = now_thai.strftime("%Y-%m-%d %H:%M:%S")
+    
+    cursor.execute('INSERT INTO sessions (subject_id, created_at) VALUES (%s, %s) RETURNING id', (data['subject_id'], now_str))
+    new_db_id = cursor.fetchone()[0]
+    
+    cursor.close()
+    conn.close()
+    
+    raw_roster = data.get('roster', '')
+    roster_list = [x.strip() for x in raw_roster.replace(',', '\n').split('\n') if x.strip()]
+    
+    current_session.update({
+        "is_active": True, 
+        "db_id": new_db_id, 
+        "subject_id": data['subject_id'],
+        "teacher_lat": float(data['lat']), 
+        "teacher_long": float(data['lng']),
+        "radius": int(data['radius']), 
+        "time_limit": int(data['time_limit']),
+        "start_time": now_thai,
+        "current_qr_token": str(uuid.uuid4())[:8], 
+        "roster": roster_list,
+        "attendees": []
+    })
+    return jsonify({"status": "success", "message": "Class Started"})
+
+@app.route('/api/update_qr_token', methods=['GET'])
+def update_qr_token():
+    if not current_session['is_active']: return jsonify({"status": "expired"})
+    elapsed = (get_thai_now() - current_session['start_time']).total_seconds() / 60
+    if elapsed > current_session['time_limit']:
+        current_session['is_active'] = False
+        return jsonify({"status": "expired"})
+    return jsonify({"qr_token": current_session['current_qr_token'], "time_left": current_session['time_limit'] - elapsed})
+
+@app.route('/api/get_dashboard_data', methods=['GET'])
+def get_dashboard_data():
+    sorted_attendees = sorted(current_session['attendees'], key=lambda x: (x['id'][-3:], x['id']))
+    
+    present_ids = [s['id'] for s in sorted_attendees]
+    absent_list = [uid for uid in current_session['roster'] if uid not in present_ids]
+    return jsonify({
+        "attendees": sorted_attendees,
+        "absent_list": absent_list,
+        "total_students": len(current_session['roster'])
+    })
+
 @app.route('/api/check_in', methods=['POST'])
 def check_in():
     user = session.get('user')
@@ -475,8 +380,6 @@ def check_in():
         client_ip = request.remote_addr
 
     user_agent = request.headers.get('User-Agent')
-
-    print(f"DEBUG Check-in: ID={student_id}, IP={client_ip}, UA={user_agent}")
 
     for s in current_session['attendees']:
         saved_ip = s.get('ip')
@@ -617,19 +520,17 @@ def admin_reset_db():
     try:
         conn = get_db()
         cursor = conn.cursor()
-        # [แก้ไข] คำสั่งล้างตารางของ Postgres
         cursor.execute('TRUNCATE TABLE attendance, sessions RESTART IDENTITY CASCADE')
         cursor.close()
         conn.close()
         return jsonify({"status": "success", "message": "ล้างข้อมูลเรียบร้อยแล้ว"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
-    
-# [เพิ่มใหม่] API สำหรับหยุดคลาสเรียนทันที
+
 @app.route('/api/stop_class', methods=['POST'])
 def stop_class():
     if current_session['is_active']:
-        current_session['is_active'] = False # ปิดสถานะ
+        current_session['is_active'] = False
         return jsonify({"status": "success", "message": "ปิดคลาสเรียบร้อย"})
     return jsonify({"status": "error", "message": "ไม่มีคลาสที่เปิดอยู่"})
 
@@ -640,7 +541,7 @@ def manual_checkin():
         
     data = request.json
     student_id = data.get('id')
-    req_name = data.get('name', '').strip() # [รับชื่อมาด้วย]
+    req_name = data.get('name', '').strip() 
     time_str = data.get('time')
     dist_str = data.get('dist', 'Manual')
     req_status = data.get('status', 'present')
@@ -653,13 +554,12 @@ def manual_checkin():
     cursor.execute('SELECT name, picture FROM attendance WHERE student_id = %s LIMIT 1', (student_id,))
     student_info = cursor.fetchone()
     
-    # [ระบบตรวจสอบชื่อ]
     if req_name:
-        final_name = req_name # 1. ถ้าอาจารย์พิมพ์ชื่อมา ให้ใช้ชื่อที่พิมพ์
+        final_name = req_name
     elif student_info and student_info['name']:
-        final_name = student_info['name'] # 2. ถ้าไม่ได้พิมพ์ แต่เคยมีประวัติ ให้ใช้ประวัติเก่า
+        final_name = student_info['name'] 
     else:
-        final_name = 'ไม่ระบุชื่อ' # 3. ถ้าไม่มีทั้งคู่ ให้ขึ้นว่า ไม่ระบุชื่อ
+        final_name = 'ไม่ระบุชื่อ' 
         
     picture = student_info['picture'] if student_info and student_info['picture'] else ''
     
