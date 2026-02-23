@@ -30,6 +30,11 @@ google = oauth.register(
 def get_thai_now():
     return datetime.utcnow() + timedelta(hours=7)
 
+ALLOWED_TEACHER_EMAILS = [
+    'test.teacher@gmail.com',   # อีเมลพิเศษสำหรับทดสอบ (เปลี่ยนเป็นอีเมลที่คุณต้องการทดสอบได้เลย)
+    'khett567@gmail.com' # ใส่อีเมลจริงของคุณลงไปได้ด้วย
+]
+
 # URL สำหรับเชื่อมต่อ Database Neon ของคุณ
 DATABASE_URL = "postgresql://neondb_owner:npg_zmaLVEd9vt8C@ep-holy-breeze-a1p4sqrq-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 
@@ -93,6 +98,14 @@ def authorize():
     user_info = token.get('userinfo')
     session['user'] = user_info
     email = user_info['email']
+    
+    # 🔍 เช็คว่าเป็นอีเมลอาจารย์/อีเมลทดสอบหรือไม่
+    if email in ALLOWED_TEACHER_EMAILS:
+        session['role'] = 'teacher'
+        return redirect('/teacher') # ถ้าใช่อาจารย์ ให้ไปหน้า teacher เลย
+        
+    # 🎓 ถ้าไม่ใช่ ให้ถือว่าเป็นนักศึกษา
+    session['role'] = 'student'
     try:
         temp_id = email.split('@')[0]
         student_id = temp_id[:12]
@@ -152,6 +165,16 @@ def student_page():
 
 @app.route('/teacher')
 def teacher_page():
+    user = session.get('user')
+    
+    # 1. บังคับให้ล็อกอินก่อน
+    if not user: 
+        return redirect('/login')
+        
+    # 2. ป้องกันไม่ให้นักศึกษาแอบเข้าหน้าอาจารย์
+    if session.get('role') != 'teacher' and user.get('email') not in ALLOWED_TEACHER_EMAILS:
+        return "⛔ ไม่อนุญาตให้เข้าถึง: หน้านี้สงวนไว้สำหรับอาจารย์เท่านั้น", 403
+        
     return render_template('teacher.html')
 
 @app.route('/attendance_records')
