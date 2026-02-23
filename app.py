@@ -496,6 +496,14 @@ def admin_reset_db():
         return jsonify({"status": "success", "message": "ล้างข้อมูลเรียบร้อยแล้ว"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
+    
+# [เพิ่มใหม่] API สำหรับหยุดคลาสเรียนทันที
+@app.route('/api/stop_class', methods=['POST'])
+def stop_class():
+    if current_session['is_active']:
+        current_session['is_active'] = False # ปิดสถานะ
+        return jsonify({"status": "success", "message": "ปิดคลาสเรียบร้อย"})
+    return jsonify({"status": "error", "message": "ไม่มีคลาสที่เปิดอยู่"})
 
 # ==========================================
 # สังเกตว่า @app.route ตัวนี้ต้องอยู่ชิดซ้ายสุดครับ
