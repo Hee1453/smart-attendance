@@ -341,7 +341,7 @@
                 const listPresent = document.getElementById("list-present");
                 listPresent.innerHTML = "";
                 
-                [...attendees].reverse().forEach(s => {
+                attendees.forEach(s => {
                     const nameShow = s.name || "ไม่ระบุชื่อ"; 
                     
                     // 👇 [แก้ไข] ดักจับสถานะให้ครบ ทั้ง มาเรียน, สาย, และ ลา

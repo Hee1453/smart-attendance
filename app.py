@@ -184,7 +184,12 @@ def history_detail(session_id):
     cursor.execute('SELECT * FROM sessions WHERE id = %s', (session_id,))
     session_data = cursor.fetchone()
     
-    cursor.execute('SELECT * FROM attendance WHERE session_id = %s', (session_id,))
+    # [แก้ไข] ใช้ ORDER BY RIGHT() เพื่อเรียง 3 ตัวท้าย และตามด้วยรหัสเต็ม
+    cursor.execute('''
+        SELECT * FROM attendance 
+        WHERE session_id = %s 
+        ORDER BY RIGHT(student_id, 3) ASC, student_id ASC
+    ''', (session_id,))
     students = cursor.fetchall()
     
     cursor.close()
@@ -192,6 +197,53 @@ def history_detail(session_id):
     
     if not session_data: return "ไม่พบข้อมูลวิชานี้", 404
     return render_template('history_detail.html', session=session_data, students=students)
+
+@app.route('/export_history/<int:session_id>')
+def export_history(session_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT subject_id, created_at FROM sessions WHERE id = %s', (session_id,))
+    session_info = cursor.fetchone()
+    
+    # [แก้ไข] ใช้ ORDER BY RIGHT() เช่นเดียวกัน
+    cursor.execute('''
+        SELECT student_id, name, check_in_time, distance, status 
+        FROM attendance 
+        WHERE session_id = %s 
+        ORDER BY RIGHT(student_id, 3) ASC, student_id ASC
+    ''', (session_id,))
+    students = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    
+    if not students: return "ไม่มีข้อมูลให้ Export"
+    
+    status_map = {'present': 'มาเรียน', 'late': 'มาสาย', 'leave': 'ลาป่วย/ลากิจ'}
+    data_list = []
+    for row in students:
+        raw_status = row['status'] if 'status' in row.keys() else 'present'
+        data_list.append({
+            "รหัสนักศึกษา": row['student_id'],
+            "ชื่อ-นามสกุล": row['name'] if 'name' in row.keys() and row['name'] else "ไม่ระบุ",
+            "เวลาที่เช็คชื่อ": row['check_in_time'],
+            "ระยะห่าง": row['distance'],
+            "สถานะ": status_map.get(raw_status, raw_status)
+        })
+        
+    df = pd.DataFrame(data_list)
+    subject_name = session_info['subject_id'] if session_info else "Class"
+    filename = f"History_{subject_name}_{session_id}.xlsx"
+    
+    from openpyxl.utils import get_column_letter
+    with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Sheet1')
+        worksheet = writer.sheets['Sheet1']
+        for idx, col in enumerate(df.columns):
+            max_len = max(df[col].astype(str).map(len).max(), len(str(col))) + 5
+            col_letter = get_column_letter(idx + 1)
+            worksheet.column_dimensions[col_letter].width = max_len
+            
+    return send_file(filename, as_attachment=True)
 
 @app.route('/setup_profile')
 def setup_profile_page():
@@ -353,13 +405,54 @@ def update_qr_token():
 
 @app.route('/api/get_dashboard_data', methods=['GET'])
 def get_dashboard_data():
-    present_ids = [s['id'] for s in current_session['attendees']]
+    # [แก้ไข] เรียงลำดับ: 3 ตัวท้าย -> ตามด้วยรหัสเต็ม
+    sorted_attendees = sorted(current_session['attendees'], key=lambda x: (x['id'][-3:], x['id']))
+    
+    present_ids = [s['id'] for s in sorted_attendees]
     absent_list = [uid for uid in current_session['roster'] if uid not in present_ids]
     return jsonify({
-        "attendees": current_session['attendees'],
+        "attendees": sorted_attendees, # ส่งข้อมูลที่เรียงแล้วไปให้หน้าเว็บ
         "absent_list": absent_list,
         "total_students": len(current_session['roster'])
     })
+
+@app.route('/attendance_records')
+def attendance_records():
+    # [แก้ไข] เรียงลำดับก่อนส่งไปหน้าบันทึกการเข้าเรียน
+    sorted_attendees = sorted(current_session['attendees'], key=lambda x: (x['id'][-3:], x['id']))
+    return render_template('attendance_records.html', attendees=sorted_attendees, subject=current_session.get('subject_id'), current_session=current_session)
+
+@app.route('/export_excel')
+def export_live_excel():
+    if not current_session['attendees']: return "ไม่มีข้อมูลให้ Export"
+    
+    # [แก้ไข] เรียงลำดับก่อนนำไปลง Excel
+    sorted_attendees = sorted(current_session['attendees'], key=lambda x: (x['id'][-3:], x['id']))
+    df = pd.DataFrame(sorted_attendees)
+    
+    subject_name = current_session.get('subject_id', 'Unknown')
+    df.insert(0, 'subject_id', subject_name)
+    
+    columns_map = {'subject_id': 'วิชา', 'id': 'รหัสนักศึกษา', 'name': 'ชื่อ-สกุล', 'time': 'เวลาที่มา', 'dist': 'ระยะห่าง', 'status': 'สถานะ'}
+    existing_cols = [c for c in columns_map.keys() if c in df.columns]
+    df = df[existing_cols]
+    df.rename(columns=columns_map, inplace=True)
+    
+    status_map = {'present': 'มาเรียน', 'late': 'มาสาย', 'leave': 'ลาป่วย/ลากิจ'}
+    df['สถานะ'] = df['สถานะ'].map(lambda x: status_map.get(x, x))
+    
+    filename = f"Attendance_{subject_name}_{get_thai_now().strftime('%Y-%m-%d_%H-%M')}.xlsx"
+    
+    from openpyxl.utils import get_column_letter
+    with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Sheet1')
+        worksheet = writer.sheets['Sheet1']
+        for idx, col in enumerate(df.columns):
+            max_len = max(df[col].astype(str).map(len).max(), len(str(col))) + 5
+            col_letter = get_column_letter(idx + 1)
+            worksheet.column_dimensions[col_letter].width = max_len
+            
+    return send_file(filename, as_attachment=True)
 
 @app.route('/api/check_in', methods=['POST'])
 def check_in():
