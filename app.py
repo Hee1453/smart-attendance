@@ -30,10 +30,10 @@ google = oauth.register(
 def get_thai_now():
     return datetime.utcnow() + timedelta(hours=7)
 
-ALLOWED_TEACHER_EMAILS = [
-    'test.teacher@gmail.com',   # อีเมลพิเศษสำหรับทดสอบ (เปลี่ยนเป็นอีเมลที่คุณต้องการทดสอบได้เลย)
-    'khett567@gmail.com' # ใส่อีเมลจริงของคุณลงไปได้ด้วย
-]
+# ==========================================
+# 👑 ตั้งค่า Super Admin (ใส่อีเมลของคุณตรงนี้)
+# ==========================================
+SUPER_ADMIN_EMAIL = 'your_real_email@gmail.com'
 
 # URL สำหรับเชื่อมต่อ Database Neon ของคุณ
 DATABASE_URL = "postgresql://neondb_owner:npg_zmaLVEd9vt8C@ep-holy-breeze-a1p4sqrq-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
@@ -64,6 +64,10 @@ def init_db():
             FOREIGN KEY(session_id) REFERENCES sessions(id)
         )
     ''')
+    
+    # [เพิ่มใหม่] ตารางสำหรับเก็บรายชื่ออีเมลอาจารย์
+    cursor.execute('CREATE TABLE IF NOT EXISTS teachers (id SERIAL PRIMARY KEY, email TEXT UNIQUE)')
+    
     cursor.close()
     conn.close()
 
@@ -99,10 +103,18 @@ def authorize():
     session['user'] = user_info
     email = user_info['email']
     
-    # 🔍 เช็คว่าเป็นอีเมลอาจารย์/อีเมลทดสอบหรือไม่
-    if email in ALLOWED_TEACHER_EMAILS:
+    # 🔍 เช็คในฐานข้อมูลว่าอีเมลนี้เป็นอาจารย์หรือไม่
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT email FROM teachers WHERE email = %s', (email,))
+    is_teacher = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    
+    # ถ้าเป็นอาจารย์ที่ลงทะเบียนไว้ หรือ เป็น Super Admin
+    if is_teacher or email == SUPER_ADMIN_EMAIL:
         session['role'] = 'teacher'
-        return redirect('/teacher') # ถ้าใช่อาจารย์ ให้ไปหน้า teacher เลย
+        return redirect('/teacher') 
         
     # 🎓 ถ้าไม่ใช่ ให้ถือว่าเป็นนักศึกษา
     session['role'] = 'student'
@@ -118,6 +130,7 @@ def authorize():
 def logout():
     session.pop('user', None)
     session.pop('student_id', None)
+    session.pop('role', None)
     return redirect('/')
 
 @app.route('/student')
@@ -171,15 +184,22 @@ def teacher_page():
     if not user: 
         return redirect('/login')
         
-    # 2. ป้องกันไม่ให้นักศึกษาแอบเข้าหน้าอาจารย์
-    if session.get('role') != 'teacher' and user.get('email') not in ALLOWED_TEACHER_EMAILS:
-        return "⛔ ไม่อนุญาตให้เข้าถึง: หน้านี้สงวนไว้สำหรับอาจารย์เท่านั้น", 403
+    email = user.get('email')
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT email FROM teachers WHERE email = %s', (email,))
+    is_teacher = cursor.fetchone()
+    cursor.close()
+    conn.close()
         
-    return render_template('teacher.html')
+    # 2. ป้องกันไม่ให้นักศึกษาแอบเข้าหน้าอาจารย์
+    if not is_teacher and email != SUPER_ADMIN_EMAIL:
+        return "⛔ ไม่อนุญาตให้เข้าถึง: หน้านี้สงวนไว้สำหรับอาจารย์ผู้สอนเท่านั้น", 403
+        
+    return render_template('teacher.html', user=user)
 
 @app.route('/attendance_records')
 def attendance_records():
-    # เรียงลำดับ 3 ตัวท้าย -> ตามด้วยรหัสเต็ม
     sorted_attendees = sorted(current_session['attendees'], key=lambda x: (x['id'][-3:], x['id']))
     return render_template('attendance_records.html', attendees=sorted_attendees, subject=current_session.get('subject_id'), current_session=current_session)
 
@@ -200,7 +220,6 @@ def history_detail(session_id):
     cursor.execute('SELECT * FROM sessions WHERE id = %s', (session_id,))
     session_data = cursor.fetchone()
     
-    # เรียงลำดับ 3 ตัวท้าย -> ตามด้วยรหัสเต็ม
     cursor.execute('''
         SELECT * FROM attendance 
         WHERE session_id = %s 
@@ -522,6 +541,10 @@ def admin_dashboard():
         ORDER BY attendance.check_in_time DESC
     ''')
     cheating_logs = cursor.fetchall()
+    
+    # [เพิ่มใหม่] ดึงรายชื่ออาจารย์ไปแสดงที่หน้าแอดมิน
+    cursor.execute('SELECT * FROM teachers ORDER BY id DESC')
+    teachers_list = cursor.fetchall()
 
     cursor.close()
     conn.close()
@@ -534,6 +557,7 @@ def admin_dashboard():
                            sessions=sessions, 
                            risk_students=risk_students,
                            cheating_logs=cheating_logs,
+                           teachers_list=teachers_list,
                            chart_labels=json.dumps(chart_labels),
                            chart_values=json.dumps(chart_values))
 
@@ -550,6 +574,39 @@ def admin_reset_db():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
+# ==========================================
+# 🆕 API สำหรับจัดการรายชื่ออาจารย์
+# ==========================================
+@app.route('/api/admin/add_teacher', methods=['POST'])
+def add_teacher():
+    if not session.get('is_admin'): return jsonify({"status": "error"}), 403
+    email = request.json.get('email', '').strip()
+    if not email: return jsonify({"status": "error", "message": "กรุณากรอกอีเมล"})
+    
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO teachers (email) VALUES (%s)', (email,))
+        conn.close()
+        return jsonify({"status": "success"})
+    except psycopg2.IntegrityError:
+        return jsonify({"status": "error", "message": "อีเมลนี้มีอยู่ในระบบแล้ว"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/api/admin/delete_teacher', methods=['POST'])
+def delete_teacher():
+    if not session.get('is_admin'): return jsonify({"status": "error"}), 403
+    teacher_id = request.json.get('id')
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM teachers WHERE id = %s', (teacher_id,))
+    conn.close()
+    return jsonify({"status": "success"})
+
+# ==========================================
+# API สำหรับเปิด/ปิดและเช็คชื่อ
+# ==========================================
 @app.route('/api/stop_class', methods=['POST'])
 def stop_class():
     if current_session['is_active']:
