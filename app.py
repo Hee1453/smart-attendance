@@ -281,7 +281,7 @@ def start_class():
     now_thai = get_thai_now() 
     now_str = now_thai.strftime("%Y-%m-%d %H:%M:%S")
     
-    # [แก้ไข] วิธีการดึง ID ล่าสุดใน Postgres
+    # ดึง ID ล่าสุด
     cursor.execute('INSERT INTO sessions (subject_id, created_at) VALUES (%s, %s) RETURNING id', (data['subject_id'], now_str))
     new_db_id = cursor.fetchone()[0]
     
@@ -290,12 +290,20 @@ def start_class():
     
     raw_roster = data.get('roster', '')
     roster_list = [x.strip() for x in raw_roster.replace(',', '\n').split('\n') if x.strip()]
+    
+    # 👇 [แก้ไขตรงนี้] เพิ่ม "attendees": [] เพื่อล้างรายชื่อเก่าทิ้งทุกครั้งที่เปิดคลาสใหม่
     current_session.update({
-        "is_active": True, "db_id": new_db_id, "subject_id": data['subject_id'],
-        "teacher_lat": float(data['lat']), "teacher_long": float(data['lng']),
-        "radius": int(data['radius']), "time_limit": int(data['time_limit']),
+        "is_active": True, 
+        "db_id": new_db_id, 
+        "subject_id": data['subject_id'],
+        "teacher_lat": float(data['lat']), 
+        "teacher_long": float(data['lng']),
+        "radius": int(data['radius']), 
+        "time_limit": int(data['time_limit']),
         "start_time": now_thai,
-        "current_qr_token": str(uuid.uuid4())[:8], "roster": roster_list
+        "current_qr_token": str(uuid.uuid4())[:8], 
+        "roster": roster_list,
+        "attendees": []   # <==== เพิ่มบรรทัดนี้เข้าไปครับ
     })
     return jsonify({"status": "success", "message": "Class Started"})
 
