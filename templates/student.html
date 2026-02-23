@@ -114,7 +114,9 @@
                                 </small>
                             </div>
                             <div>
-                                {% if row['status'] == 'late' %}
+                                {% if row['status'] == 'leave' %}
+                                    <span class="badge bg-info text-dark rounded-pill">ลา</span>
+                                {% elif row['status'] == 'late' %}
                                     <span class="badge bg-warning text-dark rounded-pill">มาสาย</span>
                                 {% else %}
                                     <span class="badge bg-success rounded-pill">มาเรียน</span>
@@ -135,7 +137,7 @@
             </div>
         {% endif %}
     </div>
-    
+
     <script>
         let html5QrcodeScanner;
 
