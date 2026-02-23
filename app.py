@@ -497,6 +497,54 @@ def admin_reset_db():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
     
+    @app.route('/api/manual_checkin', methods=['POST'])
+    def manual_checkin():
+        if not current_session['is_active']:
+            return jsonify({"status": "error", "message": "ไม่มีคลาสที่กำลังเปิดอยู่ กรุณาเปิดคลาสก่อน"})
+        
+    data = request.json
+    student_id = data.get('id')
+    time_str = data.get('time')
+    dist_str = data.get('dist', 'Manual')
+    req_status = data.get('status', 'present') # รับค่าสถานะ (present, late, leave)
+    
+    # ตรวจสอบว่าเช็คชื่อไปแล้วหรือยัง
+    if any(s['id'] == student_id for s in current_session['attendees']):
+        return jsonify({"status": "error", "message": "นักศึกษาคนนี้มีชื่อในระบบแล้ว"})
+        
+    # ค้นหาชื่อและรูปจากประวัติเก่า (ถ้ามี)
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT name, picture FROM attendance WHERE student_id = %s LIMIT 1', (student_id,))
+    student_info = cursor.fetchone()
+    
+    name = student_info['name'] if student_info and student_info['name'] else 'เพิ่มโดยอาจารย์'
+    picture = student_info['picture'] if student_info and student_info['picture'] else ''
+    
+    # เพิ่มลงใน Memory
+    student_record = {
+        "id": student_id, "time": time_str, "dist": dist_str,
+        "name": name, "picture": picture, "status": req_status,
+        "ip": "Manual", "ua": "Manual"
+    }
+    current_session['attendees'].append(student_record)
+    
+    # เพิ่มลงใน Database
+    if current_session['db_id']:
+        cursor.execute('''
+            INSERT INTO attendance (session_id, student_id, check_in_time, distance, email, name, picture, status, ip_address, device_info) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ''', (
+            current_session['db_id'], student_id, time_str, dist_str, 
+            '', name, picture, req_status, 'Manual', 'Manual'
+        ))
+        conn.commit()
+        
+    cursor.close()
+    conn.close()
+    
+    return jsonify({"status": "success"})
+
 if __name__ == '__main__':
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
     app.run(host='0.0.0.0', port=5000)
