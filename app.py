@@ -496,11 +496,14 @@ def admin_reset_db():
         return jsonify({"status": "success", "message": "ล้างข้อมูลเรียบร้อยแล้ว"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
-    
-    @app.route('/api/manual_checkin', methods=['POST'])
-    def manual_checkin():
-        if not current_session['is_active']:
-            return jsonify({"status": "error", "message": "ไม่มีคลาสที่กำลังเปิดอยู่ กรุณาเปิดคลาสก่อน"})
+
+# ==========================================
+# สังเกตว่า @app.route ตัวนี้ต้องอยู่ชิดซ้ายสุดครับ
+# ==========================================
+@app.route('/api/manual_checkin', methods=['POST'])
+def manual_checkin():
+    if not current_session['is_active']:
+        return jsonify({"status": "error", "message": "ไม่มีคลาสที่กำลังเปิดอยู่ กรุณาเปิดคลาสก่อน"})
         
     data = request.json
     student_id = data.get('id')
