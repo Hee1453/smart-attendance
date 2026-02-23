@@ -505,9 +505,6 @@ def stop_class():
         return jsonify({"status": "success", "message": "ปิดคลาสเรียบร้อย"})
     return jsonify({"status": "error", "message": "ไม่มีคลาสที่เปิดอยู่"})
 
-# ==========================================
-# สังเกตว่า @app.route ตัวนี้ต้องอยู่ชิดซ้ายสุดครับ
-# ==========================================
 @app.route('/api/manual_checkin', methods=['POST'])
 def manual_checkin():
     if not current_session['is_active']:
@@ -515,6 +512,7 @@ def manual_checkin():
         
     data = request.json
     student_id = data.get('id')
+    req_name = data.get('name', '').strip() # [รับชื่อมาด้วย]
     time_str = data.get('time')
     dist_str = data.get('dist', 'Manual')
     req_status = data.get('status', 'present')
@@ -527,12 +525,19 @@ def manual_checkin():
     cursor.execute('SELECT name, picture FROM attendance WHERE student_id = %s LIMIT 1', (student_id,))
     student_info = cursor.fetchone()
     
-    name = student_info['name'] if student_info and student_info['name'] else 'เพิ่มโดยอาจารย์'
+    # [ระบบตรวจสอบชื่อ]
+    if req_name:
+        final_name = req_name # 1. ถ้าอาจารย์พิมพ์ชื่อมา ให้ใช้ชื่อที่พิมพ์
+    elif student_info and student_info['name']:
+        final_name = student_info['name'] # 2. ถ้าไม่ได้พิมพ์ แต่เคยมีประวัติ ให้ใช้ประวัติเก่า
+    else:
+        final_name = 'ไม่ระบุชื่อ' # 3. ถ้าไม่มีทั้งคู่ ให้ขึ้นว่า ไม่ระบุชื่อ
+        
     picture = student_info['picture'] if student_info and student_info['picture'] else ''
     
     student_record = {
         "id": student_id, "time": time_str, "dist": dist_str,
-        "name": name, "picture": picture, "status": req_status,
+        "name": final_name, "picture": picture, "status": req_status,
         "ip": "Manual", "ua": "Manual"
     }
     current_session['attendees'].append(student_record)
@@ -543,7 +548,7 @@ def manual_checkin():
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ''', (
             current_session['db_id'], student_id, time_str, dist_str, 
-            '', name, picture, req_status, 'Manual', 'Manual'
+            '', final_name, picture, req_status, 'Manual', 'Manual'
         ))
         conn.commit()
         
