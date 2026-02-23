@@ -116,6 +116,7 @@ def student_page():
     conn = get_db()
     cursor = conn.cursor()
     
+    # ดึงประวัติทั้งหมดของนักศึกษา
     cursor.execute('''
         SELECT attendance.*, sessions.subject_id, sessions.created_at as class_date
         FROM attendance
@@ -123,41 +124,40 @@ def student_page():
         WHERE attendance.student_id = %s
         ORDER BY sessions.created_at DESC
     ''', (student_id,))
-    history = cursor.fetchall()
-
-    cursor.execute('''
-        SELECT DISTINCT sessions.subject_id
-        FROM attendance
-        JOIN sessions ON attendance.session_id = sessions.id
-        WHERE attendance.student_id = %s
-    ''', (student_id,))
-    my_subjects_query = cursor.fetchall()
-
-    my_subjects = [row['subject_id'] for row in my_subjects_query]
-
-    total_classes = 0
-    attended_count = len(history)
-    
-    if my_subjects:
-        placeholders = ','.join(['%s'] * len(my_subjects))
-        sql = f'SELECT COUNT(*) FROM sessions WHERE subject_id IN ({placeholders})'
-        cursor.execute(sql, my_subjects)
-        total_classes = cursor.fetchone()[0]
-    
+    raw_history = cursor.fetchall()
     cursor.close()
     conn.close()
 
-    percent = 0
-    if total_classes > 0:
-        percent = (attended_count / total_classes) * 100
+    # ---------------------------------------------------------
+    # 📊 จัดกลุ่มประวัติตามรายวิชา และคำนวณเปอร์เซ็นต์ (ฐาน 18 คาบ)
+    # ---------------------------------------------------------
+    TOTAL_CLASSES_PER_SUBJECT = 18
+    subjects_data = {}
 
-    stats = {
-        'attended': attended_count,
-        'total': total_classes,
-        'percent': int(percent)
-    }
+    for row in raw_history:
+        subj = row['subject_id']
+        if subj not in subjects_data:
+            # ถ้ายังไม่มีวิชานี้ใน Dict ให้สร้างโครงสร้างขึ้นมา
+            subjects_data[subj] = {
+                "subject_id": subj,
+                "attended": 0,
+                "total": TOTAL_CLASSES_PER_SUBJECT,
+                "percent": 0,
+                "history": []
+            }
+        
+        # เพิ่มประวัติการเข้าเรียนลงไปในวิชานั้นๆ
+        subjects_data[subj]["history"].append(row)
+        # บวกจำนวนครั้งที่มาเรียนเพิ่มขึ้น 1
+        subjects_data[subj]["attended"] += 1
 
-    return render_template('student.html', user=user, student_id=student_id, history=history, stats=stats)
+    # คำนวณเปอร์เซ็นต์ของแต่ละวิชา
+    for subj in subjects_data:
+        percent = (subjects_data[subj]["attended"] / TOTAL_CLASSES_PER_SUBJECT) * 100
+        subjects_data[subj]["percent"] = int(percent)
+
+    # ส่ง subjects_data ไปให้หน้าเว็บแทน (ไม่ต้องส่ง stats แบบเดิมแล้ว)
+    return render_template('student.html', user=user, student_id=student_id, subjects_data=subjects_data)
 
 @app.route('/teacher')
 def teacher_page():
