@@ -22,14 +22,17 @@
         <div class="row justify-content-center">
             <div class="col-md-6 col-lg-5">
                 
-                <div class="profile-card shadow-sm d-flex align-items-center">
+                <div class="profile-card shadow-sm d-flex align-items-center flex-wrap">
                     <img src="{{ user.picture }}" class="rounded-circle me-3" width="50" height="50">
                     <div>
                         <small class="text-muted">เข้าสู่ระบบโดย</small>
                         <h6 class="mb-0 fw-bold">{{ user.name }}</h6>
                         <small class="text-primary fw-bold">รหัส: {{ student_id }}</small>
                     </div>
-                    <a href="/logout" class="btn btn-sm btn-outline-danger ms-auto">ออก</a>
+                    <div class="ms-auto d-flex gap-2 mt-2 mt-sm-0">
+                        <a href="/setup_profile" class="btn btn-sm btn-outline-primary"><i class="fas fa-user-edit"></i> แก้ไข</a>
+                        <a href="/logout" class="btn btn-sm btn-outline-danger"><i class="fas fa-sign-out-alt"></i> ออก</a>
+                    </div>
                 </div>
 
                 <div class="card shadow border-0 rounded-4">
@@ -180,7 +183,6 @@
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
-                        // ไม่ต้องส่ง student_id จากหน้าเว็บแล้ว (Server รู้จาก Login Session)
                         sendCheckIn(position.coords.latitude, position.coords.longitude, qrToken);
                     },
                     (error) => {

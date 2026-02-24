@@ -33,11 +33,10 @@
         .card { border: none; border-radius: 12px; overflow: hidden; margin-bottom: 20px; }
         #qrcode img { margin: auto; max-width: 100%; height: auto; }
         #qrcode-large img {
-            max-width: 100%;  /* ห้ามกว้างเกินกรอบ */
-            height: auto;     /* ความสูงปรับอัตโนมัติ */
+            max-width: 100%;
+            height: auto;
             margin: 0 auto;
         }
-        /* Style สำหรับแท็บ */
         .nav-tabs .nav-link { color: #6c757d; font-weight: 500; }
         .nav-tabs .nav-link.active { color: #0d6efd; font-weight: bold; border-bottom: 3px solid #0d6efd; }
         .badge-late { background-color: #ffc107; color: #000; }
@@ -193,7 +192,6 @@
                             
                             <div class="card-body p-0">
                                 <div class="tab-content">
-                                    
                                     <div class="tab-pane fade show active" id="present-view">
                                         <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
                                             <table class="table table-hover align-middle mb-0">
@@ -221,6 +219,23 @@
                 </div>
             </div>
 
+        </div>
+    </div>
+
+    <div class="modal fade" id="qrModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg"> 
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title"><i class="fas fa-qrcode me-2"></i>QR Code สำหรับเช็คชื่อ</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body text-center bg-white d-flex justify-content-center align-items-center" style="min-height: 400px;">
+                    <div id="qrcode-large" class="d-flex justify-content-center w-100"></div> 
+                </div>
+                <div class="modal-footer justify-content-center">
+                    <h3 class="text-danger fw-bold" id="timer-display-modal">เหลือเวลา --</h3>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -252,7 +267,7 @@
                 radius: document.getElementById("radius").value,
                 time_limit: document.getElementById("time_limit").value,
                 lat: pos.coords.latitude, lng: pos.coords.longitude,
-                roster: "" // ส่งค่าว่างไปแทน เพื่อไม่ให้ Error
+                roster: ""
             };
 
             fetch('/api/start_class', {
@@ -274,9 +289,9 @@
                 }, 100);
 
                 updateQR();
-                qrTimer = setInterval(updateQR, 1000);
+                qrTimer = setInterval(updateQR, 3000);
                 fetchDashboard();
-                dataTimer = setInterval(fetchDashboard, 2000);
+                dataTimer = setInterval(fetchDashboard, 5000);
             });
         }, err => {
             alert("GPS Error: " + err.message);
@@ -293,142 +308,109 @@
                 clearInterval(qrTimer); clearInterval(dataTimer);
                 const expireMsg = "<h4 class='text-danger fw-bold'>หมดเวลา</h4>";
                 document.getElementById("qrcode").innerHTML = expireMsg;
-                document.getElementById("qrcode-large").innerHTML = expireMsg; // อัปเดตตัวใหญ่ด้วย
+                document.getElementById("qrcode-large").innerHTML = expireMsg;
                 document.getElementById("timer-display").innerHTML = "หมดเวลา";
                 document.getElementById("timer-display-modal").innerHTML = "หมดเวลา";
                 return;
             }
 
-            // เช็คว่า Token เปลี่ยนไหม ถ้าเปลี่ยนให้วาดใหม่
             const box = document.getElementById("qrcode");
-            const boxLarge = document.getElementById("qrcode-large"); // กล่องใหญ่
+            const boxLarge = document.getElementById("qrcode-large");
 
             if (box.getAttribute("data-token") !== data.qr_token) {
-                // 1. วาดตัวเล็ก
                 box.innerHTML = "";
                 new QRCode(box, {
                     text: data.qr_token, width: 200, height: 200,
                     colorDark : "#000000", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H
                 });
                 
-                // 2. [เพิ่มใหม่] วาดตัวใหญ่ (Full Screen)
                 boxLarge.innerHTML = "";
                 new QRCode(boxLarge, {
-                    text: data.qr_token, width: 400, height: 400, // ขนาดใหญ่สะใจ
+                    text: data.qr_token, width: 400, height: 400,
                     colorDark : "#000000", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H
                 });
 
-                // อัปเดต attribute กันกระพริบ
                 box.setAttribute("data-token", data.qr_token);
                 
-                // Effect กระพริบขอบเขียว
                 box.style.border = "5px solid #198754";
                 setTimeout(() => box.style.border = "5px solid white", 300);
             }
             
-            // อัปเดตเวลาทั้ง 2 จุด
             const timeText = `เหลือเวลา: ${Math.max(0, data.time_left).toFixed(0)} นาที`;
             document.getElementById("timer-display").innerText = timeText;
             document.getElementById("timer-display-modal").innerText = timeText;
         });
     }
+
     function fetchDashboard() {
-            fetch('/api/get_dashboard_data')
-            .then(res => res.json())
-            .then(data => {
-                const attendees = data.attendees || [];
-                document.getElementById("count-present").innerText = attendees.length;
-                const listPresent = document.getElementById("list-present");
-                listPresent.innerHTML = "";
+        fetch('/api/get_dashboard_data')
+        .then(res => res.json())
+        .then(data => {
+            const attendees = data.attendees || [];
+            document.getElementById("count-present").innerText = attendees.length;
+            const listPresent = document.getElementById("list-present");
+            listPresent.innerHTML = "";
+            
+            attendees.forEach(s => {
+                const nameShow = s.name || "ไม่ระบุชื่อ"; 
                 
-                attendees.forEach(s => {
-                    const nameShow = s.name || "ไม่ระบุชื่อ"; 
-                    
-                    // 👇 [แก้ไข] ดักจับสถานะให้ครบ ทั้ง มาเรียน, สาย, และ ลา
-                    let statusBadge = '<span class="badge bg-success rounded-pill">มาเรียน</span>';
-                    if(s.status === 'late') {
-                        statusBadge = '<span class="badge badge-late rounded-pill" style="background-color: #ffc107; color: #000;">สาย</span>';
-                    } else if(s.status === 'leave') {
-                        statusBadge = '<span class="badge bg-info text-dark rounded-pill">ลาป่วย/ลากิจ</span>';
-                    }
+                let statusBadge = '<span class="badge bg-success rounded-pill">มาเรียน</span>';
+                if(s.status === 'late') {
+                    statusBadge = '<span class="badge badge-late rounded-pill" style="background-color: #ffc107; color: #000;">สาย</span>';
+                } else if(s.status === 'leave') {
+                    statusBadge = '<span class="badge bg-info text-dark rounded-pill">ลาป่วย/ลากิจ</span>';
+                }
 
-                    listPresent.innerHTML +=
-                        `<tr>
-                            <td class="align-middle"><small class="text-muted">${s.time}</small></td>
-                            <td class="align-middle fw-bold text-primary">${s.id}</td>
-                            <td class="align-middle">
-                                <div class="d-flex align-items-center">
-                                    ${s.picture ? `<img src="${s.picture}" class="rounded-circle me-2 border" width="30" height="30">` : ''}
-                                    <span>${nameShow}</span>
-                                </div>
-                            </td>
-                            <td class="align-middle">${statusBadge} <small class="text-secondary ms-1">(${s.dist})</small></td>
-                        </tr>`;
-                });
+                listPresent.innerHTML +=
+                    `<tr>
+                        <td class="align-middle"><small class="text-muted">${s.time}</small></td>
+                        <td class="align-middle fw-bold text-primary">${s.id}</td>
+                        <td class="align-middle">
+                            <div class="d-flex align-items-center">
+                                ${s.picture ? `<img src="${s.picture}" class="rounded-circle me-2 border" width="30" height="30">` : ''}
+                                <span>${nameShow}</span>
+                            </div>
+                        </td>
+                        <td class="align-middle">${statusBadge} <small class="text-secondary ms-1">(${s.dist})</small></td>
+                    </tr>`;
             });
-        }
+        });
+    }
 
-    // ... โค้ดประกาศตัวแปร let map, teacherMarker, radiusCircle, qrTimer, dataTimer; ...
-
-    // [เพิ่มส่วนนี้เข้าไป] ตรวจสอบสถานะเมื่อโหลดหน้าเว็บ
     window.onload = function() {
         const urlParams = new URLSearchParams(window.location.search);
         const view = urlParams.get('view');
 
-        // ถ้ากดปุ่ม "กลับห้องเรียนปัจจุบัน" มา
         if (view === 'dashboard') {
-            // ลองเช็คกับ Server ดูก่อนว่าคลาสยัง active อยู่ไหม
             fetch('/api/update_qr_token')
             .then(res => res.json())
             .then(data => {
                 if (data.status !== 'expired' && data.qr_token) {
-                    // ถ้าคลาสยังเปิดอยู่ ให้สลับไปหน้า Dashboard ทันที
                     document.getElementById("setup-panel").style.display = "none";
                     document.getElementById("dashboard-panel").style.display = "block";
                     
-                    // เริ่มรัน Timer และดึงข้อมูลใหม่
                     updateQR();
-                    qrTimer = setInterval(updateQR, 1000);
+                    qrTimer = setInterval(updateQR, 3000);
                     fetchDashboard();
-                    dataTimer = setInterval(fetchDashboard, 2000);
+                    dataTimer = setInterval(fetchDashboard, 5000);
                 } else {
-                    // ถ้าคลาสหมดเวลาหรือปิดไปแล้ว ก็โชว์หน้า Setup ตามปกติ
                     alert('เซสชันการเช็คชื่อได้สิ้นสุดลงแล้ว');
                 }
             });
         }
     }
 
-// [เพิ่มใหม่] ฟังก์ชันกดหยุดคลาส
     function stopClass() {
         if(confirm('คุณต้องการปิดระบบเช็คชื่อสำหรับคลาสนี้ทันทีเลยใช่หรือไม่?')) {
             fetch('/api/stop_class', { method: 'POST' })
             .then(res => res.json())
             .then(data => {
                 if(data.status === 'success') {
-                    // เรียกอัปเดต QR Code เพื่อให้ระบบเคลียร์หน้าจอเป็น "หมดเวลา"
                     updateQR(); 
                 }
             });
         }
     }
-
-// ... โค้ด function showPanel(panelName) { ...
     </script>
-                <div class="modal fade" id="qrModal" tabindex="-1">
-                <div class="modal-dialog modal-dialog-centered modal-lg"> <div class="modal-content">
-                        <div class="modal-header bg-dark text-white">
-                            <h5 class="modal-title"><i class="fas fa-qrcode me-2"></i>QR Code สำหรับเช็คชื่อ</h5>
-                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                        </div>
-                        <div class="modal-body text-center bg-white d-flex justify-content-center align-items-center" style="min-height: 400px;">
-                            <div id="qrcode-large" class="d-flex justify-content-center w-100"></div> 
-                        </div>
-                        <div class="modal-footer justify-content-center">
-                            <h3 class="text-danger fw-bold" id="timer-display-modal">เหลือเวลา --</h3>
-                        </div>
-                    </div>
-                </div>
-            </div>
 </body>
 </html>

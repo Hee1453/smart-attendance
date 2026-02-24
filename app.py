@@ -10,13 +10,14 @@ from authlib.integrations.flask_client import OAuth
 import json
 
 app = Flask(__name__)
-app.secret_key = 'super_secret_key_change_this'
 
 # ==========================================
-# ⚙️ ตั้งค่า Google OAuth
+# ⚙️ ตั้งค่าระบบ และ Google OAuth (ดึงจาก Environment)
 # ==========================================
-app.config['GOOGLE_CLIENT_ID'] = '1055465619000-mi7kalvlqi6cuumuqholbqhm6bi5et7b.apps.googleusercontent.com'
-app.config['GOOGLE_CLIENT_SECRET'] = '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'
+app.secret_key = os.environ.get('SECRET_KEY', 'super_secret_key_change_this')
+
+app.config['GOOGLE_CLIENT_ID'] = os.environ.get('GOOGLE_CLIENT_ID', '1055465619000-mi7kalvlqi6cuumuqholbqhm6bi5et7b.apps.googleusercontent.com')
+app.config['GOOGLE_CLIENT_SECRET'] = os.environ.get('GOOGLE_CLIENT_SECRET', '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')
 
 oauth = OAuth(app)
 google = oauth.register(
@@ -30,13 +31,11 @@ google = oauth.register(
 def get_thai_now():
     return datetime.utcnow() + timedelta(hours=7)
 
-# ==========================================
-# 👑 ตั้งค่า Super Admin (ใส่อีเมลของคุณตรงนี้)
-# ==========================================
-SUPER_ADMIN_EMAIL = 'your_real_email@gmail.com'
+# 👑 ตั้งค่า Super Admin 
+SUPER_ADMIN_EMAIL = os.environ.get('SUPER_ADMIN_EMAIL', 'your_real_email@gmail.com')
 
-# URL สำหรับเชื่อมต่อ Database Neon ของคุณ
-DATABASE_URL = "postgresql://neondb_owner:npg_zmaLVEd9vt8C@ep-holy-breeze-a1p4sqrq-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+# URL สำหรับเชื่อมต่อ Database Neon
+DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://neondb_owner:npg_zmaLVEd9vt8C@ep-holy-breeze-a1p4sqrq-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require')
 
 def get_db():
     conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.DictCursor)
@@ -47,15 +46,12 @@ def init_db():
     conn = get_db()
     cursor = conn.cursor()
     
-    # 1. ตาราง Sessions (เพิ่ม teacher_email เพื่อแยกคลาสของอาจารย์แต่ละคน)
     cursor.execute('CREATE TABLE IF NOT EXISTS sessions (id SERIAL PRIMARY KEY, subject_id TEXT, created_at TEXT, teacher_email TEXT)')
     
-    # [อัปเดตตารางเก่าอัตโนมัติเผื่อยังไม่มีคอลัมน์นี้]
     cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='sessions' AND column_name='teacher_email'")
     if not cursor.fetchone():
         cursor.execute("ALTER TABLE sessions ADD COLUMN teacher_email TEXT DEFAULT 'unknown'")
     
-    # 2. ตาราง Attendance
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS attendance (
             id SERIAL PRIMARY KEY, 
@@ -73,7 +69,6 @@ def init_db():
         )
     ''')
     
-    # 3. ตาราง Teachers
     cursor.execute('CREATE TABLE IF NOT EXISTS teachers (id SERIAL PRIMARY KEY, email TEXT UNIQUE)')
     
     cursor.close()
@@ -223,7 +218,6 @@ def history_page():
     
     conn = get_db()
     cursor = conn.cursor()
-    # ดึงประวัติเฉพาะของอาจารย์ที่ล็อกอินอยู่เท่านั้น
     cursor.execute('SELECT * FROM sessions WHERE teacher_email = %s ORDER BY id DESC', (user['email'],))
     sessions = cursor.fetchall()
     cursor.close()
@@ -382,7 +376,6 @@ def start_class():
     now_str = now_thai.strftime("%Y-%m-%d %H:%M:%S")
     teacher_email = user['email']
     
-    # บันทึกอีเมลอาจารย์ลงในฐานข้อมูลด้วย
     cursor.execute('INSERT INTO sessions (subject_id, created_at, teacher_email) VALUES (%s, %s, %s) RETURNING id', (data['subject_id'], now_str, teacher_email))
     new_db_id = cursor.fetchone()[0]
     
@@ -448,7 +441,6 @@ def check_in():
     data = request.json
     token = data.get('qr_token')
     
-    # ระบบค้นหาห้องเรียนอัตโนมัติจาก QR Token ที่ส่งมา
     target_session = None
     for s in active_sessions.values():
         if s['is_active'] and s['current_qr_token'] == token:
@@ -470,6 +462,7 @@ def check_in():
 
     user_agent = request.headers.get('User-Agent')
 
+    # [ระบบป้องกันการสแกนซ้ำ] 
     for s in target_session['attendees']:
         saved_ip = s.get('ip')
         saved_ua = s.get('ua')
@@ -492,8 +485,6 @@ def check_in():
         "ua": user_agent      
     }
     target_session['attendees'].append(student_record)
-    
-    # อัปเดต QR Code ทันทีป้องกันการถ่ายรูปส่งให้เพื่อน
     target_session['current_qr_token'] = str(uuid.uuid4())[:8]
 
     if target_session['db_id']:
@@ -513,7 +504,7 @@ def check_in():
     return jsonify({"status": "checked_in"})
 
 # ==========================================
-# ส่วนของ ADMIN (แอดมินดูภาพรวมทั้งหมดได้)
+# ส่วนของ ADMIN
 # ==========================================
 ADMIN_PASSWORD = "1234"
 
