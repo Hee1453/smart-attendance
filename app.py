@@ -585,12 +585,13 @@ def admin_dashboard():
     graph_data = cursor.fetchall()
     
     cursor.execute('''
-        SELECT sessions.subject_id, attendance.check_in_time as created_at, attendance.ip_address, COUNT(DISTINCT attendance.student_id) as dup_count
+        SELECT sessions.subject_id, MAX(attendance.check_in_time) as created_at, attendance.ip_address, COUNT(DISTINCT attendance.student_id) as dup_count
         FROM attendance
         JOIN sessions ON attendance.session_id = sessions.id
-        GROUP BY attendance.session_id, attendance.ip_address, sessions.subject_id, attendance.check_in_time
+        WHERE attendance.ip_address != 'Manual' 
+        GROUP BY attendance.session_id, attendance.ip_address, sessions.subject_id
         HAVING COUNT(DISTINCT attendance.student_id) > 1
-        ORDER BY attendance.check_in_time DESC
+        ORDER BY created_at DESC
     ''')
     cheating_logs = cursor.fetchall()
     
