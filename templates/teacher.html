@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <style>
         body { font-family: 'Prompt', sans-serif; background-color: #f8f9fa; }
@@ -256,7 +257,7 @@
         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>กำลังดึงพิกัด...';
         
         if (!navigator.geolocation) {
-            alert("Browser ของคุณไม่รองรับ GPS");
+            Swal.fire('ข้อผิดพลาด', 'Browser ของคุณไม่รองรับ GPS', 'error');
             btn.disabled = false;
             return;
         }
@@ -294,7 +295,7 @@
                 dataTimer = setInterval(fetchDashboard, 5000);
             });
         }, err => {
-            alert("GPS Error: " + err.message);
+            Swal.fire('ข้อผิดพลาด GPS', err.message, 'error');
             btn.disabled = false;
             btn.innerHTML = '<i class="fas fa-rocket me-2"></i> เปิดระบบเช็คชื่อ';
         }, { enableHighAccuracy: true });
@@ -394,22 +395,34 @@
                     fetchDashboard();
                     dataTimer = setInterval(fetchDashboard, 5000);
                 } else {
-                    alert('เซสชันการเช็คชื่อได้สิ้นสุดลงแล้ว');
+                    Swal.fire('หมดเวลา', 'เซสชันการเช็คชื่อได้สิ้นสุดลงแล้ว', 'warning');
                 }
             });
         }
     }
 
     function stopClass() {
-        if(confirm('คุณต้องการปิดระบบเช็คชื่อสำหรับคลาสนี้ทันทีเลยใช่หรือไม่?')) {
-            fetch('/api/stop_class', { method: 'POST' })
-            .then(res => res.json())
-            .then(data => {
-                if(data.status === 'success') {
-                    updateQR(); 
-                }
-            });
-        }
+        Swal.fire({
+            title: 'ยืนยันการปิดคลาส?',
+            text: "นักศึกษาจะไม่สามารถสแกน QR ได้อีก",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'ปิดคลาสทันที',
+            cancelButtonText: 'ยกเลิก'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                fetch('/api/stop_class', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    if(data.status === 'success') {
+                        updateQR(); 
+                        Swal.fire('ปิดคลาสแล้ว', 'ระบบเช็คชื่อถูกปิดเรียบร้อย', 'success');
+                    }
+                });
+            }
+        });
     }
     </script>
 </body>

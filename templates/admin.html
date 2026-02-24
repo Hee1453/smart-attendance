@@ -8,6 +8,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         body { font-family: 'Prompt', sans-serif; background-color: #f4f6f9; }
         .stat-card { transition: transform 0.2s; }
@@ -99,17 +100,19 @@
                 <div class="card shadow-sm border-0 mb-4">
                     <div class="card-header bg-white fw-bold"><i class="fas fa-list text-primary me-2"></i>ประวัติเซสชันทั้งหมด</div>
                     <div class="card-body p-0">
-                        <table class="table table-hover mb-0">
-                            <thead class="table-light"><tr><th>ID</th><th>วิชา</th><th>วันที่สร้าง</th><th>ลบ</th></tr></thead>
-                            <tbody>
-                                {% for session in sessions %}
-                                <tr id="row-{{ session.id }}">
-                                    <td>{{ session.id }}</td><td>{{ session.subject_id }}</td><td>{{ session.created_at }}</td>
-                                    <td><button onclick="deleteSession({{ session.id }})" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></button></td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0 align-middle">
+                                <thead class="table-light"><tr><th>ID</th><th>วิชา</th><th>วันที่สร้าง</th><th>ลบ</th></tr></thead>
+                                <tbody>
+                                    {% for session in sessions %}
+                                    <tr id="row-{{ session.id }}">
+                                        <td>{{ session.id }}</td><td>{{ session.subject_id }}</td><td>{{ session.created_at }}</td>
+                                        <td><button onclick="deleteSession({{ session.id }})" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></button></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -168,55 +171,104 @@
             options: { scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
         });
 
-        // ฟังก์ชันลบคลาส
+        // 🎯 ฟังก์ชันลบคลาส
         function deleteSession(id) {
-            if(confirm("คุณต้องการลบคลาสนี้ใช่หรือไม่?")) {
-                fetch('/api/delete_session', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ id: id })
-                }).then(res => res.json()).then(data => {
-                    if(data.status === 'success') document.getElementById('row-' + id).remove();
-                });
-            }
+            Swal.fire({
+                title: 'ยืนยันการลบคลาส?',
+                text: "ข้อมูลการเช็คชื่อของคลาสนี้จะถูกลบทั้งหมด!",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'ลบข้อมูล',
+                cancelButtonText: 'ยกเลิก'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch('/api/delete_session', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ id: id })
+                    }).then(res => res.json()).then(data => {
+                        if(data.status === 'success') {
+                            document.getElementById('row-' + id).remove();
+                            Swal.fire('ลบแล้ว!', 'ลบคลาสเรียนเรียบร้อย', 'success');
+                        }
+                    });
+                }
+            });
         }
 
-        // ฟังก์ชันล้าง Database
+        // 🎯 ฟังก์ชันล้าง Database
         function resetDatabase() {
-            if(prompt("พิมพ์ 'DELETE' เพื่อยืนยัน:") === 'DELETE') {
-                fetch('/api/admin/reset_database', { method: 'POST' })
-                .then(res => res.json()).then(data => {
-                    alert(data.message);
-                    if(data.status === 'success') location.reload();
-                });
-            }
+            Swal.fire({
+                title: 'ล้างฐานข้อมูลทั้งหมด?',
+                text: "พิมพ์ 'DELETE' เพื่อยืนยันการลบข้อมูลทั้งหมด",
+                input: 'text',
+                icon: 'error',
+                showCancelButton: true,
+                confirmButtonText: 'ยืนยันการลบ',
+                cancelButtonText: 'ยกเลิก',
+                inputValidator: (value) => {
+                    if (value !== 'DELETE') {
+                        return 'กรุณาพิมพ์ DELETE ให้ถูกต้อง'
+                    }
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch('/api/admin/reset_database', { method: 'POST' })
+                    .then(res => res.json()).then(data => {
+                        if(data.status === 'success') {
+                            Swal.fire('สำเร็จ!', data.message, 'success').then(() => location.reload());
+                        } else {
+                            Swal.fire('ข้อผิดพลาด', data.message, 'error');
+                        }
+                    });
+                }
+            });
         }
 
         // 🎯 ฟังก์ชันเพิ่มอีเมลอาจารย์
         function addTeacher() {
             const email = document.getElementById('new_teacher_email').value;
-            if(!email) return alert("กรุณากรอกอีเมล");
+            if(!email) return Swal.fire('แจ้งเตือน', 'กรุณากรอกอีเมล', 'warning');
             fetch('/api/admin/add_teacher', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ email: email })
             }).then(res => res.json()).then(data => {
-                if(data.status === 'success') location.reload();
-                else alert(data.message);
+                if(data.status === 'success') {
+                    Swal.fire('สำเร็จ', 'เพิ่มอาจารย์เรียบร้อย', 'success').then(() => location.reload());
+                } else {
+                    Swal.fire('ข้อผิดพลาด', data.message, 'error');
+                }
             });
         }
 
         // 🎯 ฟังก์ชันลบอีเมลอาจารย์
         function deleteTeacher(id) {
-            if(confirm("คุณต้องการลบสิทธิ์อาจารย์คนนี้ใช่หรือไม่?")) {
-                fetch('/api/admin/delete_teacher', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ id: id })
-                }).then(res => res.json()).then(data => {
-                    if(data.status === 'success') document.getElementById('teacher-row-' + id).remove();
-                });
-            }
+            Swal.fire({
+                title: 'ลบสิทธิ์อาจารย์?',
+                text: "อาจารย์ท่านนี้จะไม่สามารถเข้าสู่ระบบจัดการได้อีก",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'ลบสิทธิ์',
+                cancelButtonText: 'ยกเลิก'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch('/api/admin/delete_teacher', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ id: id })
+                    }).then(res => res.json()).then(data => {
+                        if(data.status === 'success') {
+                            document.getElementById('teacher-row-' + id).remove();
+                            Swal.fire('ลบแล้ว!', 'ลบสิทธิ์อาจารย์เรียบร้อย', 'success');
+                        }
+                    });
+                }
+            });
         }
     </script>
 </body>

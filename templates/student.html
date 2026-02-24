@@ -8,6 +8,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <style>
         body { font-family: 'Prompt', sans-serif; background-color: #f8f9fa; }
@@ -153,7 +154,13 @@
             
             html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
             .catch(err => {
-                alert("เปิดกล้องไม่ได้: " + err);
+                // [อัปเดต] ใช้ SweetAlert2
+                Swal.fire({
+                    icon: 'error',
+                    title: 'ไม่สามารถเปิดกล้องได้',
+                    text: err.toString(),
+                    confirmButtonColor: '#0d6efd'
+                });
                 stopCamera();
             });
         }
