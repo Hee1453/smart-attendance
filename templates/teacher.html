@@ -71,9 +71,9 @@
                         <i class="fas fa-history width-25"></i> ประวัติการสอน
                     </a>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link text-warning" href="/">
-                        <i class="fas fa-home width-25"></i> กลับหน้าหลัก
+                <li class="nav-item mt-4 border-top border-secondary pt-2">
+                    <a class="nav-link text-danger" href="#" onclick="confirmLogout()">
+                        <i class="fas fa-sign-out-alt width-25"></i> ออกจากระบบ
                     </a>
                 </li>
             </ul>
@@ -95,9 +95,9 @@
                     <i class="fas fa-history width-25"></i> ประวัติการสอน
                 </a>
             </li>
-            <li class="nav-item mt-5">
-                <a class="nav-link text-warning" href="/">
-                    <i class="fas fa-home width-25"></i> กลับหน้าหลัก
+            <li class="nav-item mt-5 border-top border-secondary pt-3">
+                <a class="nav-link text-danger" href="#" onclick="confirmLogout()">
+                    <i class="fas fa-sign-out-alt width-25"></i> ออกจากระบบ
                 </a>
             </li>
         </ul>
@@ -200,8 +200,6 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="card-footer bg-white text-center py-3">
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -235,6 +233,24 @@
         if(panelName === 'setup') {
             document.getElementById("setup-panel").scrollIntoView({behavior: "smooth"});
         }
+    }
+
+    // ฟังก์ชันแจ้งเตือนก่อนออกจากระบบ
+    function confirmLogout() {
+        Swal.fire({
+            title: 'ยืนยันการออกจากระบบ?',
+            text: "ข้อมูลคลาสเรียนที่ยังเปิดอยู่จะไม่ถูกปิด (แต่นักศึกษาจะยังสแกนได้จนกว่าจะหมดเวลา)",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'ออกจากระบบ',
+            cancelButtonText: 'ยกเลิก'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = '/logout';
+            }
+        });
     }
 
     function startClass(e) {
@@ -366,26 +382,22 @@
     }
 
     window.onload = function() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const view = urlParams.get('view');
-
-        if (view === 'dashboard') {
-            fetch('/api/update_qr_token')
-            .then(res => res.json())
-            .then(data => {
-                if (data.status !== 'expired' && data.qr_token) {
-                    document.getElementById("setup-panel").style.display = "none";
-                    document.getElementById("dashboard-panel").style.display = "block";
-                    
-                    updateQR();
-                    qrTimer = setInterval(updateQR, 3000);
-                    fetchDashboard();
-                    dataTimer = setInterval(fetchDashboard, 5000);
-                } else {
-                    Swal.fire('หมดเวลา', 'เซสชันการเช็คชื่อได้สิ้นสุดลงแล้ว', 'warning');
-                }
-            });
-        }
+        // [อัปเดตใหม่] เช็คสถานะคลาสจากฝั่ง Server ทันทีเมื่อเปิดหน้าเว็บ
+        fetch('/api/update_qr_token')
+        .then(res => res.json())
+        .then(data => {
+            if (data.status !== 'expired' && data.qr_token) {
+                // ถ้ามีคลาสเปิดค้างอยู่ ให้ข้ามไปหน้า Dashboard ทันที
+                document.getElementById("setup-panel").style.display = "none";
+                document.getElementById("dashboard-panel").style.display = "block";
+                
+                updateQR();
+                qrTimer = setInterval(updateQR, 3000);
+                fetchDashboard();
+                dataTimer = setInterval(fetchDashboard, 5000);
+            }
+            // ถ้าหมดเวลา หรือยังไม่ได้เปิดคลาส ก็จะอยู่หน้า setup-panel ตามปกติ
+        });
     }
 
     function stopClass() {
@@ -405,7 +417,10 @@
                 .then(data => {
                     if(data.status === 'success') {
                         updateQR(); 
-                        Swal.fire('ปิดคลาสแล้ว', 'ระบบเช็คชื่อถูกปิดเรียบร้อย', 'success');
+                        Swal.fire('ปิดคลาสแล้ว', 'ระบบเช็คชื่อถูกปิดเรียบร้อย', 'success').then(() => {
+                            // ปิดคลาสเสร็จ เด้งกลับไปหน้าจอตั้งค่า
+                            window.location.reload(); 
+                        });
                     }
                 });
             }
