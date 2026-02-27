@@ -291,6 +291,46 @@ def export_history(session_id):
             
     return send_file(filename, as_attachment=True)
 
+# API สำหรับเพิ่มชื่อแบบ Manual ย้อนหลัง (เมื่อคลาสปิดไปแล้ว)
+@app.route('/api/history_add_student', methods=['POST'])
+def history_add_student():
+    if not session.get('user'): return jsonify({"status": "error", "message": "กรุณาล็อกอิน"}), 401
+    
+    data = request.json
+    session_id = data.get('session_id')
+    student_id = data.get('student_id')
+    req_name = data.get('name', '').strip()
+    status = data.get('status', 'present')
+    time_str = get_thai_now().strftime("%H:%M:%S")
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # 1. เช็คว่ามีชื่อในคาบนี้หรือยัง
+    cursor.execute('SELECT id FROM attendance WHERE session_id = %s AND student_id = %s', (session_id, student_id))
+    if cursor.fetchone():
+        cursor.close(); conn.close()
+        return jsonify({"status": "error", "message": "นักศึกษาคนนี้มีชื่อในคลาสนี้แล้ว"})
+        
+    # 2. หาชื่อจากประวัติเก่า
+    cursor.execute('SELECT name, picture FROM attendance WHERE student_id = %s LIMIT 1', (student_id,))
+    student_info = cursor.fetchone()
+    
+    final_name = req_name if req_name else (student_info['name'] if student_info and student_info['name'] else 'เพิ่มโดยอาจารย์ (ย้อนหลัง)')
+    picture = student_info['picture'] if student_info and student_info['picture'] else ''
+    
+    # 3. บันทึกลง DB
+    cursor.execute('''
+        INSERT INTO attendance (session_id, student_id, check_in_time, distance, email, name, picture, status, ip_address, device_info) 
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    ''', (session_id, student_id, time_str, 'Manual', '', final_name, picture, status, 'Manual', 'Manual'))
+    
+    conn.commit()
+    cursor.close()
+    conn.close()
+    
+    return jsonify({"status": "success", "message": "เพิ่มข้อมูลย้อนหลังเรียบร้อย"})
+
 @app.route('/setup_profile')
 def setup_profile_page():
     user = session.get('user')

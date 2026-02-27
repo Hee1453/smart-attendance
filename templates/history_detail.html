@@ -7,18 +7,22 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>body { font-family: 'Prompt', sans-serif; }</style>
 </head>
 <body class="bg-light">
     <div class="container py-5">
-        <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <h4>
                 <i class="fas fa-book"></i> วิชา: {{ session['subject_id'] }} 
                 <small class="text-muted">({{ session['created_at'] }})</small>
             </h4>
-            <div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addManualModal">
+                    <i class="fas fa-user-plus"></i> เพิ่มรายชื่อ
+                </button>
                 <a href="/export_history/{{ session['id'] }}" class="btn btn-success">
-                    <i class="fas fa-file-excel"></i> Export Excel
+                    <i class="fas fa-file-excel"></i> Export
                 </a>
                 <a href="/history" class="btn btn-secondary">
                     <i class="fas fa-arrow-left"></i> ย้อนกลับ
@@ -37,6 +41,7 @@
                                 <th>รหัสนักศึกษา</th>
                                 <th>ชื่อ-นามสกุล</th> 
                                 <th>เวลาที่เช็คชื่อ</th>
+                                <th>สถานะ</th>
                                 <th>ระยะห่าง</th>
                             </tr>
                         </thead>
@@ -46,6 +51,15 @@
                                 <td class="fw-bold">{{ student['student_id'] }}</td>
                                 <td class="text-primary">{{ student['name'] if student['name'] else '-' }}</td>
                                 <td>{{ student['check_in_time'] }}</td>
+                                <td>
+                                    {% if student['status'] == 'leave' %}
+                                        <span class="badge bg-info text-dark">ลาป่วย/ลากิจ</span>
+                                    {% elif student['status'] == 'late' %}
+                                        <span class="badge bg-warning text-dark">มาสาย</span>
+                                    {% else %}
+                                        <span class="badge bg-success">มาเรียน</span>
+                                    {% endif %}
+                                </td>
                                 <td><span class="badge bg-light text-dark border">{{ student['distance'] }}</span></td>
                             </tr>
                             {% endfor %}
@@ -58,5 +72,70 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="addManualModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="fas fa-user-plus"></i> เพิ่มรายชื่อ (ย้อนหลัง)</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="historyAddForm">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">รหัสนักศึกษา *</label>
+                            <input type="text" class="form-control" id="h_student_id" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">ชื่อ-นามสกุล (ไม่บังคับ)</label>
+                            <input type="text" class="form-control" id="h_name" placeholder="ถ้าระบบเคยมีชื่อแล้วจะดึงให้อัตโนมัติ">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">สถานะ</label>
+                            <select class="form-select" id="h_status">
+                                <option value="present">✅ มาเรียน</option>
+                                <option value="late">⚠️ มาสาย</option>
+                                <option value="leave">📝 ลาป่วย/ลากิจ</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">บันทึกข้อมูล</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.getElementById('historyAddForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            btn.innerHTML = 'กำลังบันทึก...';
+
+            const payload = {
+                session_id: {{ session['id'] }},
+                student_id: document.getElementById('h_student_id').value,
+                name: document.getElementById('h_name').value,
+                status: document.getElementById('h_status').value
+            };
+
+            fetch('/api/history_add_student', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    Swal.fire('สำเร็จ', data.message, 'success').then(() => location.reload());
+                } else {
+                    Swal.fire('ข้อผิดพลาด', data.message, 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = 'บันทึกข้อมูล';
+                }
+            });
+        });
+    </script>
 </body>
 </html>
