@@ -72,12 +72,19 @@
       
       <div class="flex justify-center mb-6">
         <div class="relative">
-          <div class="w-20 h-20 rounded-2xl flex items-center justify-center shadow-lg relative z-10" style="background: linear-gradient(135deg, #FCC934, #F9C803);">
-            <svg class="w-10 h-10" fill="#000000" viewBox="0 0 24 24">
-              <path d="M12 0c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm0 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0 2c-4.411 0-8 3.589-8 8s3.589 8 8 8 8-3.589 8-8-3.589-8-8-8zm0 2c3.309 0 6 2.691 6 6s-2.691 6-6 6-6-2.691-6-6 2.691-6 6-6zm0 2c-2.206 0-4 1.794-4 4s1.794 4 4 4 4-1.794 4-4-1.794-4-4-4z" />
-            </svg>
-          </div>
-          <div class="absolute inset-0 rounded-2xl pulse-ring" style="background: linear-gradient(135deg, #FCC934, #F9C803); opacity: 0.5;"></div>
+          <a href="/admin/login" class="group block relative cursor-pointer outline-none">
+            <div class="w-20 h-20 rounded-2xl flex items-center justify-center shadow-lg relative z-10 transition-all duration-500 group-hover:scale-110 group-hover:shadow-[0_0_25px_rgba(252,201,52,0.8)]" style="background: linear-gradient(135deg, #FCC934, #F9C803);">
+              <svg class="w-10 h-10 transition-transform duration-500 group-hover:rotate-180" fill="#000000" viewBox="0 0 24 24">
+                <path d="M12 0c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm0 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0 2c-4.411 0-8 3.589-8 8s3.589 8 8 8 8-3.589 8-8-3.589-8-8-8zm0 2c3.309 0 6 2.691 6 6s-2.691 6-6 6-6-2.691-6-6 2.691-6 6-6zm0 2c-2.206 0-4 1.794-4 4s1.794 4 4 4 4-1.794 4-4-1.794-4-4-4z" />
+              </svg>
+            </div>
+            <div class="absolute inset-0 rounded-2xl pulse-ring" style="background: linear-gradient(135deg, #FCC934, #F9C803); opacity: 0.5;"></div>
+            
+            <div class="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs font-medium px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none whitespace-nowrap shadow-md">
+              <span class="mr-1">🔒</span> Admin Only
+              <div class="absolute bottom-[-4px] left-1/2 transform -translate-x-1/2 w-2 h-2 bg-gray-800 rotate-45"></div>
+            </div>
+          </a>
         </div>
       </div>
       

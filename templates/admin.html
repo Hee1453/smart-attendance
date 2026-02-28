@@ -25,6 +25,7 @@
     </nav>
 
     <div class="container py-4">
+        
         <div class="card shadow-sm border-0 mb-4">
             <div class="card-header bg-success text-white fw-bold d-flex align-items-center">
                 <i class="fas fa-chalkboard-teacher me-2"></i> จัดการสิทธิ์อาจารย์ (Teacher Access)
@@ -98,16 +99,37 @@
                 </div>
 
                 <div class="card shadow-sm border-0 mb-4">
-                    <div class="card-header bg-white fw-bold"><i class="fas fa-list text-primary me-2"></i>ประวัติเซสชันทั้งหมด</div>
+                    <div class="card-header bg-white fw-bold"><i class="fas fa-list text-primary me-2"></i>ประวัติเซสชันและการจัดการทั้งหมด</div>
                     <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-hover mb-0 align-middle">
-                                <thead class="table-light"><tr><th>ID</th><th>วิชา</th><th>วันที่สร้าง</th><th>ลบ</th></tr></thead>
+                        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                            <table class="table table-hover mb-0 align-middle text-center">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>วิชา</th>
+                                        <th>วันที่สร้าง</th>
+                                        <th>การจัดการ (แอดมิน)</th>
+                                    </tr>
+                                </thead>
                                 <tbody>
                                     {% for session in sessions %}
                                     <tr id="row-{{ session.id }}">
-                                        <td>{{ session.id }}</td><td>{{ session.subject_id }}</td><td>{{ session.created_at }}</td>
-                                        <td><button onclick="deleteSession({{ session.id }})" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></button></td>
+                                        <td><small class="text-muted">{{ session.id }}</small></td>
+                                        <td><span class="badge bg-primary fs-6" id="subj-name-{{ session.id }}">{{ session.subject_id }}</span></td>
+                                        <td><small>{{ session.created_at }}</small></td>
+                                        <td>
+                                            <div class="d-flex gap-1 justify-content-center">
+                                                <a href="/history/{{ session.id }}" class="btn btn-sm btn-info text-white" title="ดูรายชื่อ">
+                                                    <i class="fas fa-eye"></i>
+                                                </a>
+                                                <button onclick="editSession({{ session.id }}, '{{ session.subject_id }}')" class="btn btn-sm btn-warning" title="แก้ไขชื่อวิชา">
+                                                    <i class="fas fa-edit"></i>
+                                                </button>
+                                                <button onclick="deleteSession({{ session.id }})" class="btn btn-sm btn-danger" title="ลบคลาสนี้">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
@@ -120,7 +142,7 @@
             <div class="col-lg-4">
                 <div class="card shadow-sm border-0 mb-4">
                     <div class="card-header bg-danger text-white fw-bold"><i class="fas fa-exclamation-triangle me-2"></i>นักศึกษาที่เสี่ยงหมดสิทธิ์สอบ (< 80%)</div>
-                    <div class="card-body p-0">
+                    <div class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
                         <ul class="list-group list-group-flush">
                             {% for student in risk_students %}
                             <li class="list-group-item risk-row d-flex justify-content-between align-items-center">
@@ -128,21 +150,27 @@
                                 <span class="badge bg-danger rounded-pill">{{ student.percent }}% ({{ student.attended }}/{{ student.total }})</span>
                             </li>
                             {% endfor %}
+                            {% if not risk_students %}
+                                <li class="list-group-item text-center text-muted py-4">ยังไม่พบนักศึกษาที่มีความเสี่ยง</li>
+                            {% endif %}
                         </ul>
                     </div>
                 </div>
 
                 <div class="card shadow-sm border-0">
                     <div class="card-header bg-warning text-dark fw-bold"><i class="fas fa-user-secret me-2"></i>ตรวจพบการใช้อุปกรณ์ซ้ำ (IP/Device)</div>
-                    <div class="card-body p-0">
+                    <div class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
                         <ul class="list-group list-group-flush">
                             {% for log in cheating_logs %}
                             <li class="list-group-item">
                                 <small class="text-danger fw-bold"><i class="fas fa-wifi"></i> IP: {{ log.ip_address }}</small><br>
                                 <span class="text-muted" style="font-size: 0.8rem;">ในวิชา {{ log.subject_id }} เวลา {{ log.created_at }}</span><br>
-                                <span class="badge bg-secondary">พบจำนวน {{ log.dup_count }} คน</span>
+                                <span class="badge bg-secondary mt-1">พบใช้ซ้ำ {{ log.dup_count }} คน</span>
                             </li>
                             {% endfor %}
+                            {% if not cheating_logs %}
+                                <li class="list-group-item text-center text-muted py-4">ยังไม่พบการทุจริต</li>
+                            {% endif %}
                         </ul>
                     </div>
                 </div>
@@ -171,7 +199,40 @@
             options: { scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
         });
 
-        // 🎯 ฟังก์ชันลบคลาส
+        // 🎯 เพิ่มฟังก์ชันแก้ไขคลาสในหน้า Admin
+        function editSession(id, oldName) {
+            Swal.fire({
+                title: 'แก้ไขชื่อวิชา (Admin)',
+                input: 'text',
+                inputValue: oldName,
+                showCancelButton: true,
+                confirmButtonText: 'บันทึก',
+                cancelButtonText: 'ยกเลิก',
+                inputValidator: (value) => {
+                    if (!value) return 'กรุณากรอกชื่อวิชา!'
+                }
+            }).then((result) => {
+                if (result.isConfirmed && result.value !== oldName) {
+                    const newName = result.value;
+                    fetch('/api/edit_session', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ id: id, new_name: newName })
+                    }).then(res => res.json()).then(data => {
+                        if(data.status === 'success') {
+                            document.getElementById('subj-name-' + id).innerText = newName;
+                            const btn = document.querySelector(`button[onclick^="editSession(${id}"]`);
+                            btn.setAttribute("onclick", `editSession(${id}, '${newName}')`);
+                            Swal.fire('สำเร็จ!', 'อัปเดตชื่อวิชาเรียบร้อย', 'success');
+                        } else {
+                            Swal.fire('ข้อผิดพลาด', data.message, 'error');
+                        }
+                    });
+                }
+            });
+        }
+
+        // ลบคลาส
         function deleteSession(id) {
             Swal.fire({
                 title: 'ยืนยันการลบคลาส?',
@@ -198,7 +259,7 @@
             });
         }
 
-        // 🎯 ฟังก์ชันล้าง Database
+        // ล้าง Database
         function resetDatabase() {
             Swal.fire({
                 title: 'ล้างฐานข้อมูลทั้งหมด?',
@@ -209,9 +270,7 @@
                 confirmButtonText: 'ยืนยันการลบ',
                 cancelButtonText: 'ยกเลิก',
                 inputValidator: (value) => {
-                    if (value !== 'DELETE') {
-                        return 'กรุณาพิมพ์ DELETE ให้ถูกต้อง'
-                    }
+                    if (value !== 'DELETE') return 'กรุณาพิมพ์ DELETE ให้ถูกต้อง'
                 }
             }).then((result) => {
                 if (result.isConfirmed) {
@@ -227,7 +286,6 @@
             });
         }
 
-        // 🎯 ฟังก์ชันเพิ่มอีเมลอาจารย์
         function addTeacher() {
             const email = document.getElementById('new_teacher_email').value;
             if(!email) return Swal.fire('แจ้งเตือน', 'กรุณากรอกอีเมล', 'warning');
@@ -244,7 +302,6 @@
             });
         }
 
-        // 🎯 ฟังก์ชันลบอีเมลอาจารย์
         function deleteTeacher(id) {
             Swal.fire({
                 title: 'ลบสิทธิ์อาจารย์?',
