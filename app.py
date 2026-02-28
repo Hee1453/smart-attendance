@@ -114,29 +114,25 @@ def authorize():
     session['user'] = user_info
     email = user_info['email']
     
-    # 1. เช็คในฐานข้อมูลก่อนว่าเป็น "อาจารย์" หรือ "Super Admin" หรือไม่
     conn = get_db()
     cursor = conn.cursor()
+    
+    # เช็คว่าเป็นอาจารย์ไหม
     cursor.execute('SELECT email FROM teachers WHERE email = %s', (email,))
     is_teacher = cursor.fetchone()
-    cursor.close()
-    conn.close()
     
-    # 🌟 ถ้าเป็นอาจารย์ ให้เข้าได้เลย (อนุญาตทุกโดเมน เช่น @gmail.com ก็ได้ถ้าแอดมินเพิ่มให้)
     if is_teacher or email == SUPER_ADMIN_EMAIL:
+        cursor.close(); conn.close()
         session['role'] = 'teacher'
         return redirect('/teacher') 
         
-    # ========================================================
-    # 🛡️ 2. ส่วนของนักศึกษา: บล็อกคนนอก และบังคับใช้ @rmutsb.ac.th
-    # ========================================================
+    # เช็คว่าใช้อีเมลมหาลัยไหม
     if not email.endswith('@rmutsb.ac.th'):
-        # ล้างข้อมูลกันเหนียวเผื่อล็อกอินค้าง
+        cursor.close(); conn.close()
         session.clear() 
         return "⛔ เข้าสู่ระบบล้มเหลว: สำหรับนักศึกษา กรุณาใช้อีเมลของมหาวิทยาลัย (@rmutsb.ac.th) เท่านั้น", 403
-    # ========================================================
 
-    # 3. ถ้านักศึกษาใช้อีเมลมหาลัยถูกต้อง ให้ผ่านเข้าสู่ระบบ
+    # ตัดรหัสนักศึกษา
     session['role'] = 'student'
     try:
         temp_id = email.split('@')[0]
@@ -144,6 +140,18 @@ def authorize():
     except:
         student_id = email[:12]
     session['student_id'] = student_id
+    
+    # 🌟 [เพิ่มใหม่] เช็คว่าเคยมีชื่อในระบบ (เคยเช็คชื่อ) แล้วหรือยัง
+    cursor.execute('SELECT name FROM attendance WHERE student_id = %s AND name IS NOT NULL AND name != \'ไม่ระบุชื่อ\' LIMIT 1', (student_id,))
+    existing_user = cursor.fetchone()
+    cursor.close(); conn.close()
+    
+    # ถ้าเคยมีชื่อแล้ว ให้เซฟลง Session แล้วข้ามไปหน้า Student เลย ไม่ต้อง Setup อีก
+    if existing_user:
+        session['user']['name'] = existing_user['name']
+        return redirect('/student')
+        
+    # ถ้าเป็นเด็กใหม่กิ๊ก ค่อยพาไปหน้า Setup
     return redirect('/setup_profile')
 
 @app.route('/logout')
@@ -347,7 +355,14 @@ def history_add_student():
 def setup_profile_page():
     user = session.get('user')
     if not user: return redirect('/login')
-    return render_template('setup_profile.html', user=user, student_id=session.get('student_id'))
+    # ดึงค่าเก่าที่พิมพ์ไว้มาแสดงเผื่อกด "แก้ไข"
+    fname = ""
+    lname = ""
+    if 'name' in user and " " in user['name']:
+        parts = user['name'].split(" ", 1)
+        fname = parts[0]
+        lname = parts[1]
+    return render_template('setup_profile.html', user=user, student_id=session.get('student_id'), fname=fname, lname=lname)
 
 @app.route('/save_profile', methods=['POST'])
 def save_profile():
@@ -355,9 +370,21 @@ def save_profile():
     fname = request.form.get('fname')
     lname = request.form.get('lname')
     full_name = f"{fname} {lname}"
+    
+    # อัปเดตใน Session
     user_info = session['user']
     user_info['name'] = full_name
     session['user'] = user_info
+    
+    # 🌟 [เพิ่มใหม่] แอบไปอัปเดตชื่อใน Database ย้อนหลังให้ด้วย
+    student_id = session.get('student_id')
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE attendance SET name = %s WHERE student_id = %s', (full_name, student_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    
     return redirect('/student')
 
 @app.route('/api/delete_session', methods=['POST'])

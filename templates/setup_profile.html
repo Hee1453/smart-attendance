@@ -33,14 +33,13 @@
 
                             <div class="mb-3">
                                 <label class="form-label fw-bold">ชื่อจริง (ภาษาไทย)</label>
-                                <input type="text" name="fname" class="form-control" placeholder="เช่น สมชาย" required autofocus>
+                                <input type="text" name="fname" class="form-control" placeholder="เช่น สมชาย" value="{{ fname }}" required autofocus>
                             </div>
 
                             <div class="mb-4">
                                 <label class="form-label fw-bold">นามสกุล (ภาษาไทย)</label>
-                                <input type="text" name="lname" class="form-control" placeholder="เช่น รักเรียน" required>
+                                <input type="text" name="lname" class="form-control" placeholder="เช่น รักเรียน" value="{{ lname }}" required>
                             </div>
-
                             <button type="submit" class="btn btn-primary w-100 btn-lg rounded-pill">
                                 บันทึกและเข้าใช้งาน
                             </button>
