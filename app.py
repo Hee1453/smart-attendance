@@ -593,7 +593,7 @@ def admin_login():
         if request.form.get('password') == ADMIN_PASSWORD:
             session['is_admin'] = True
             return redirect('/admin')
-        else: return render_template('admin_login.html', error="รหัสผ่านไม่ถูกต้อง")
+        else: return render_template('admin_login.html', error="เฮ้ย!!! Adminจริงป่าวเนี่ย?")
     return render_template('admin_login.html')
 
 @app.route('/admin/logout')
