@@ -55,10 +55,22 @@
     </nav>
 
     <div class="offcanvas offcanvas-start text-bg-dark" tabindex="-1" id="mobileMenu">
-        <div class="offcanvas-header border-bottom border-secondary">
-            <h5 class="offcanvas-title"><i class="fas fa-bars me-2"></i>เมนูอาจารย์</h5>
+        
+        <div class="offcanvas-header border-bottom border-secondary d-flex align-items-center">
+            <div class="d-flex align-items-center">
+                {% if user and user.picture %}
+                    <img src="{{ user.picture }}" class="rounded-circle me-3 border border-2 border-primary" width="45" height="45">
+                {% else %}
+                    <i class="fas fa-user-circle fs-1 text-secondary me-3"></i>
+                {% endif %}
+                <div>
+                    <h6 class="mb-0 fw-bold">{{ user.name if user.name else 'Teacher' }}</h6>
+                    <small class="text-muted" style="font-size: 0.75rem;">{{ user.email }}</small>
+                </div>
+            </div>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas"></button>
         </div>
+
         <div class="offcanvas-body p-0">
             <ul class="nav flex-column mt-3">
                 <li class="nav-item">
@@ -81,9 +93,20 @@
     </div>
 
     <nav class="sidebar-desktop d-none d-md-block">
-        <div class="text-center py-4 border-bottom border-secondary mb-3">
-            <h5><i class="fas fa-chalkboard-teacher"></i> Teacher Panel</h5>
+        
+        <div class="text-center py-4 border-bottom border-secondary mb-3 bg-dark">
+            {% if user and user.picture %}
+                <img src="{{ user.picture }}" alt="Profile" class="rounded-circle mb-2 border border-2 border-primary shadow-sm" width="70" height="70">
+            {% else %}
+                <div class="rounded-circle bg-secondary d-inline-flex align-items-center justify-content-center mb-2" style="width:70px; height:70px;">
+                    <i class="fas fa-user text-white fs-3"></i>
+                </div>
+            {% endif %}
+            
+            <h6 class="fw-bold text-white mb-0 text-truncate px-2">{{ user.name if user.name else 'Teacher' }}</h6>
+            <small class="text-muted text-truncate px-2 d-block" style="font-size: 0.8rem;">{{ user.email }}</small>
         </div>
+
         <ul class="nav flex-column">
             <li class="nav-item">
                 <a class="nav-link active" href="#setup-panel" onclick="showPanel('setup')">
