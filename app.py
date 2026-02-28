@@ -789,6 +789,29 @@ def manual_checkin():
     
     return jsonify({"status": "success"})
 
+# [เพิ่มใหม่] หน้าดูรายละเอียดคลาสเรียน สำหรับ Admin โดยเฉพาะ
+@app.route('/admin/history/<int:session_id>')
+def admin_history_detail(session_id):
+    if not session.get('is_admin'): return redirect('/admin/login')
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM sessions WHERE id = %s', (session_id,))
+    session_data = cursor.fetchone()
+    
+    cursor.execute('''
+        SELECT * FROM attendance 
+        WHERE session_id = %s 
+        ORDER BY RIGHT(student_id, 3) ASC, student_id ASC
+    ''', (session_id,))
+    students = cursor.fetchall()
+    
+    cursor.close()
+    conn.close()
+    
+    if not session_data: return "ไม่พบข้อมูลวิชานี้", 404
+    return render_template('admin_history_detail.html', session=session_data, students=students)
+
 if __name__ == '__main__':
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
     app.run(host='0.0.0.0', port=5000)

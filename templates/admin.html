@@ -99,10 +99,18 @@
                 </div>
 
                 <div class="card shadow-sm border-0 mb-4">
-                    <div class="card-header bg-white fw-bold"><i class="fas fa-list text-primary me-2"></i>ประวัติเซสชันและการจัดการทั้งหมด</div>
+                    <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <span><i class="fas fa-list text-primary me-2"></i>ประวัติเซสชันและการจัดการทั้งหมด</span>
+                        
+                        <div class="input-group input-group-sm" style="max-width: 250px;">
+                            <span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
+                            <input type="text" id="searchInput" onkeyup="searchTable()" class="form-control" placeholder="ค้นหาชื่อวิชา หรือ วันที่...">
+                        </div>
+
+                    </div>
                     <div class="card-body p-0">
                         <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-                            <table class="table table-hover mb-0 align-middle text-center">
+                            <table class="table table-hover mb-0 align-middle text-center" id="sessionTable">
                                 <thead class="table-light sticky-top">
                                     <tr>
                                         <th>ID</th>
@@ -119,7 +127,7 @@
                                         <td><small>{{ session.created_at }}</small></td>
                                         <td>
                                             <div class="d-flex gap-1 justify-content-center">
-                                                <a href="/history/{{ session.id }}" class="btn btn-sm btn-info text-white" title="ดูรายชื่อ">
+                                                <a href="/admin/history/{{ session.id }}" class="btn btn-sm btn-info text-white" title="ดูรายละเอียด Audit">
                                                     <i class="fas fa-eye"></i>
                                                 </a>
                                                 <button onclick="editSession({{ session.id }}, '{{ session.subject_id }}')" class="btn btn-sm btn-warning" title="แก้ไขชื่อวิชา">
@@ -199,7 +207,33 @@
             options: { scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
         });
 
-        // 🎯 เพิ่มฟังก์ชันแก้ไขคลาสในหน้า Admin
+        // 🎯 ฟังก์ชันค้นหาในตาราง
+        function searchTable() {
+            var input, filter, table, tr, tdSubj, tdDate, i, txtValueSubj, txtValueDate;
+            input = document.getElementById("searchInput");
+            filter = input.value.toUpperCase();
+            table = document.getElementById("sessionTable");
+            tr = table.getElementsByTagName("tr");
+
+            for (i = 1; i < tr.length; i++) { // เริ่มที่ 1 เพื่อข้าม Header
+                tdSubj = tr[i].getElementsByTagName("td")[1]; // คอลัมน์ที่ 2 (วิชา)
+                tdDate = tr[i].getElementsByTagName("td")[2]; // คอลัมน์ที่ 3 (วันที่)
+                
+                if (tdSubj || tdDate) {
+                    txtValueSubj = tdSubj.textContent || tdSubj.innerText;
+                    txtValueDate = tdDate.textContent || tdDate.innerText;
+                    
+                    // ค้นหาเจอจากชื่อวิชา หรือ วันที่ ก็ได้
+                    if (txtValueSubj.toUpperCase().indexOf(filter) > -1 || txtValueDate.toUpperCase().indexOf(filter) > -1) {
+                        tr[i].style.display = "";
+                    } else {
+                        tr[i].style.display = "none";
+                    }
+                }       
+            }
+        }
+
+        // ฟังก์ชันจัดการอื่นๆ คงเดิม
         function editSession(id, oldName) {
             Swal.fire({
                 title: 'แก้ไขชื่อวิชา (Admin)',
@@ -232,7 +266,6 @@
             });
         }
 
-        // ลบคลาส
         function deleteSession(id) {
             Swal.fire({
                 title: 'ยืนยันการลบคลาส?',
@@ -259,7 +292,6 @@
             });
         }
 
-        // ล้าง Database
         function resetDatabase() {
             Swal.fire({
                 title: 'ล้างฐานข้อมูลทั้งหมด?',
